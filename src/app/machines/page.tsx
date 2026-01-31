@@ -12,7 +12,9 @@ async function fetchMachines(filters?: {
   if (filters?.status) sp.set("status", filters.status);
   if (filters?.location) sp.set("location", filters.location);
   if (filters?.lowStock) sp.set("lowStock", "true");
-  const res = await fetch(`/api/machines?${sp.toString()}`, { cache: "no-store" });
+  // En production, remplace localhost par le vrai domaine ou utilise une variable d’env
+  const baseUrl = process.env.NODE_ENV === "production" ? "https://fleet.shakadistribution.ca" : "http://localhost:3000";
+  const res = await fetch(`${baseUrl}/api/machines?${sp.toString()}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch machines");
   return res.json();
 }
@@ -93,10 +95,6 @@ function MachineCard({ machine }: { machine: any }) {
             src={machine.cameraSnapshot}
             alt={`Snapshot ${machine.id}`}
             className="h-32 w-full rounded-lg object-cover border border-white/10"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = "data:image/svg+xml,%3Csvg width='320' height='128' xmlns='http://www.w3.org/2000/svg'%3E%3Crect fill='%23333' width='320' height='128'/%3E%3Ctext fill='%23999' font-family='sans-serif' font-size='14' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ESnapshot indisponible%3C/text%3E%3C/svg%3E";
-            }}
           />
         </div>
       ) : (
