@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { machinesDB } from "../machines/route";
+import { machinesDB } from "../../../lib/machines";
 
 function computeUptime(firstSeen: Date): string {
   const now = new Date();
