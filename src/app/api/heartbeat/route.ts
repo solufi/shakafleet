@@ -1,20 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Mock storage – à remplacer par Postgres/Redis
-let machinesDB: Record<string, any> = {
-  "shaka-0001": {
-    id: "shaka-0001",
-    name: "Station A - Galerie Lafayette",
-    status: "offline",
-    lastSeen: new Date(),
-    uptime: "0j 0h 0m",
-    inventory: {},
-    cameraSnapshot: "/api/machines/shaka-0001/snapshot",
-    sensors: { temp: 0, humidity: 0, doorOpen: false },
-    firmware: "unknown",
-    location: "Paris, 75001",
-  },
-};
+import { machinesDB } from "../machines/route";
 
 function computeUptime(firstSeen: Date): string {
   const now = new Date();

@@ -1,44 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Mock DB – à remplacer par tes vraies requêtes Prisma/Postgres
-const mockMachines = [
-  {
+// Mock DB partagé avec heartbeat – à remplacer par Postgres/Redis
+let machinesDB: Record<string, any> = {
+  "shaka-0001": {
     id: "shaka-0001",
     name: "Station A - Galerie Lafayette",
-    status: "online" as const,
-    lastSeen: new Date(Date.now() - 2 * 60 * 1000),
-    uptime: "12j 4h 32m",
-    inventory: { "Shaka Classic": 12, "Shaka Mango": 8, "Shaka Mint": 5 },
+    status: "offline",
+    lastSeen: new Date(),
+    uptime: "0j 0h 0m",
+    inventory: {},
     cameraSnapshot: "/api/machines/shaka-0001/snapshot",
-    sensors: { temp: 22.5, humidity: 45, doorOpen: false },
-    firmware: "v2.1.3",
+    sensors: { temp: 0, humidity: 0, doorOpen: false },
+    firmware: "unknown",
     location: "Paris, 75001",
+    firstSeen: new Date(),
   },
-  {
-    id: "shaka-0002",
-    name: "Station B - Centre Commercial",
-    status: "offline" as const,
-    lastSeen: new Date(Date.now() - 45 * 60 * 1000),
-    uptime: "8j 12h 10m",
-    inventory: { "Shaka Classic": 3, "Shaka Mango": 0, "Shaka Mint": 7 },
-    cameraSnapshot: null,
-    sensors: { temp: 24.1, humidity: 52, doorOpen: true },
-    firmware: "v2.1.2",
-    location: "Lyon, 69001",
-  },
-  {
-    id: "shaka-0003",
-    name: "Station C - Aéroport",
-    status: "online" as const,
-    lastSeen: new Date(Date.now() - 30 * 1000),
-    uptime: "21j 15h 5m",
-    inventory: { "Shaka Classic": 20, "Shaka Mango": 15, "Shaka Mint": 12 },
-    cameraSnapshot: "/api/machines/shaka-0003/snapshot",
-    sensors: { temp: 20.8, humidity: 40, doorOpen: false },
-    firmware: "v2.1.3",
-    location: "Nice, 06000",
-  },
-];
+};
+
+// Export pour que heartbeat puisse mettre à jour
+export { machinesDB };
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -46,21 +26,21 @@ export async function GET(request: NextRequest) {
   const location = searchParams.get("location");
   const lowStock = searchParams.get("lowStock"); // "true" | null
 
-  let filtered = mockMachines;
+  let filtered = Object.values(machinesDB);
 
   if (status && ["online", "offline"].includes(status)) {
-    filtered = filtered.filter((m) => m.status === status);
+    filtered = filtered.filter((m: any) => m.status === status);
   }
 
   if (location) {
-    filtered = filtered.filter((m) =>
-      m.location.toLowerCase().includes(location.toLowerCase())
+    filtered = filtered.filter((m: any) =>
+      (m.location || "").toLowerCase().includes(location.toLowerCase())
     );
   }
 
   if (lowStock === "true") {
-    filtered = filtered.filter((m) =>
-      Object.values(m.inventory).some((qty) => qty < 5)
+    filtered = filtered.filter((m: any) =>
+      Object.values(m.inventory || {}).some((qty: any) => (qty as number) < 5)
     );
   }
 
