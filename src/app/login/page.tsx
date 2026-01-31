@@ -36,54 +36,71 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "64px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 24, marginBottom: 8 }}>Shaka Fleet</h1>
-      <p style={{ marginTop: 0, color: "#555" }}>Admin login</p>
+    <main className="min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur px-6 py-8 shadow-xl">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              onError={(e) => {
+                e.currentTarget.src = "/logo.svg";
+              }}
+              alt="Shaka Distribution"
+              className="h-12 w-auto"
+            />
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">Shaka Fleet</h1>
+              <p className="text-sm text-slate-300">Admin login</p>
+            </div>
+          </div>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          Email
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            autoComplete="username"
-            required
-            style={{ padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
-          />
-        </label>
+          <form onSubmit={onSubmit} className="mt-6 grid gap-4">
+            <div className="grid gap-2">
+              <label className="text-sm text-slate-200">Email</label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="username"
+                required
+                className="h-11 rounded-xl bg-slate-950/50 px-4 text-slate-100 placeholder:text-slate-500 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
+                placeholder="info@shakadistribution.ca"
+              />
+            </div>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          Password
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            autoComplete="current-password"
-            required
-            style={{ padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
-          />
-        </label>
+            <div className="grid gap-2">
+              <label className="text-sm text-slate-200">Password</label>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete="current-password"
+                required
+                className="h-11 rounded-xl bg-slate-950/50 px-4 text-slate-100 placeholder:text-slate-500 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
+                placeholder="••••••••••"
+              />
+            </div>
 
-        {error ? (
-          <div style={{ padding: 10, borderRadius: 8, background: "#ffe9e9", color: "#8a0000" }}>{error}</div>
-        ) : null}
+            {error ? (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            ) : null}
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: 10,
-            borderRadius: 8,
-            border: "1px solid #111",
-            background: loading ? "#333" : "#111",
-            color: "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="h-11 rounded-xl bg-brand-600 font-medium text-white shadow hover:bg-brand-500 disabled:opacity-60"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-slate-400">
+          Secure admin access for machine fleet operations.
+        </p>
+      </div>
     </main>
   );
 }
