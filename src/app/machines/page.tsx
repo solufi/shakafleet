@@ -1,23 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-
-// À remplacer par un fetch à ton API
-async function fetchMachines(filters?: {
-  status?: "online" | "offline";
-  location?: string;
-  lowStock?: boolean;
-}) {
-  const sp = new URLSearchParams();
-  if (filters?.status) sp.set("status", filters.status);
-  if (filters?.location) sp.set("location", filters.location);
-  if (filters?.lowStock) sp.set("lowStock", "true");
-  // En production, remplace localhost par le vrai domaine ou utilise une variable d’env
-  const baseUrl = process.env.NODE_ENV === "production" ? "https://fleet.shakadistribution.ca" : "http://localhost:3000";
-  const res = await fetch(`${baseUrl}/api/machines?${sp.toString()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch machines");
-  return res.json();
-}
+import { machinesDB } from "../../lib/machines";
 
 const mockMachines: any[] = []; // plus de mock, on utilise les vraies données
 
@@ -39,13 +23,8 @@ function MachineCard({ machine }: { machine: any }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isOnline ? "bg-green-500" : "bg-red-500"
-            }`}
-            title={isOnline ? "En ligne" : "Hors ligne"}
-          />
-          <span className={`text-xs ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          <div className={`h-2 w-2 rounded-full ${isOnline ? "bg-green-400" : "bg-red-400"}`} />
+          <span className={`text-xs font-medium ${isOnline ? "text-green-400" : "text-red-400"}`}>
             {isOnline ? "En ligne" : "Hors ligne"}
           </span>
         </div>
@@ -69,31 +48,28 @@ function MachineCard({ machine }: { machine: any }) {
       {/* Infos */}
       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div>
-          <span className="text-slate-400">Dernier contact</span>
-          <div className="text-white">
-            {machine.lastSeen.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-          </div>
+          <span className="text-slate-400">Dernière activité</span>
+          <div className="text-white">{machine.lastSeen ? new Date(machine.lastSeen).toLocaleString("fr-FR") : "N/A"}</div>
         </div>
         <div>
           <span className="text-slate-400">Uptime</span>
-          <div className="text-white">{machine.uptime}</div>
-        </div>
-        <div>
-          <span className="text-slate-400">Firmware</span>
-          <div className="text-white">{machine.firmware}</div>
+          <div className="text-white">{machine.uptime || "N/A"}</div>
         </div>
         <div>
           <span className="text-slate-400">Stock total</span>
-          <div className="text-white">{totalStock} unités</div>
+          <div className="text-white">{totalStock > 0 ? `${totalStock} produits` : "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-slate-400">Firmware</span>
+          <div className="text-white">{machine.firmware || "N/A"}</div>
         </div>
       </div>
 
       {/* Sensors */}
-      <div className="mt-4 flex items-center gap-4 text-xs">
-        <span className="text-slate-400">Sensors:</span>
+      <div className="mt-4 rounded-lg bg-slate-800/40 p-3 text-xs">
         <span className="text-white">
-          🌡️ {machine.sensors.temp}°C • 💧 {machine.sensors.humidity}% •
-          {machine.sensors.doorOpen ? " 🚪 Ouverte" : " 🚪 Fermée"}
+          🌡️ {machine.sensors?.temp ?? "N/A"}°C • 💧 {machine.sensors?.humidity ?? "N/A"}% •
+          {machine.sensors?.doorOpen === true ? " 🚪 Ouverte" : machine.sensors?.doorOpen === false ? " 🚪 Fermée" : " 🚪 N/A"}
         </span>
       </div>
 
@@ -126,13 +102,8 @@ export default async function MachinesPage() {
   const session = jar.get("shaka_admin")?.value;
   if (!session) redirect("/login");
 
-  // Utilise l’API ; en cas d’erreur, fallback sur tableau vide
-  let machines = [];
-  try {
-    machines = await fetchMachines();
-  } catch (e) {
-    console.error("Failed to fetch machines, using empty list", e);
-  }
+  // Utilise directement la BDD partagée, plus de fetch HTTP
+  const machines = Object.values(machinesDB);
 
   return (
     <div className="min-h-screen">
