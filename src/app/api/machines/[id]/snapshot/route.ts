@@ -33,7 +33,9 @@ export async function GET(
       return NextResponse.json({ error: "Snapshot not available" }, { status: 404 });
     }
 
-    return new NextResponse(snapshot, {
+    // Convert Buffer to Uint8Array for NextResponse
+    const uint8Array = new Uint8Array(snapshot);
+    return new NextResponse(uint8Array, {
       headers: {
         "Content-Type": "image/svg+xml",
         "Cache-Control": "public, max-age=30",
