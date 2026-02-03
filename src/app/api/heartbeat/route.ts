@@ -21,7 +21,11 @@ export async function POST(request: NextRequest) {
       location,
       firmware,
       uptime,
+      meta,
     } = body;
+
+    const forwardedFor = request.headers.get("x-forwarded-for") || undefined;
+    const requestUserAgent = request.headers.get("user-agent") || undefined;
 
     if (!machineId || typeof machineId !== "string") {
       return NextResponse.json({ error: "machineId required" }, { status: 400 });
@@ -54,9 +58,21 @@ export async function POST(request: NextRequest) {
     if (uptime) machine.uptime = uptime;
     else machine.uptime = computeUptime(machine.firstSeen);
 
-    console.log(`[heartbeat] ${machineId} – status=${machine.status} sensors=${JSON.stringify(machine.sensors)}`);
+    // Debug provenance (pour identifier les ghost machines)
+    if (meta) {
+      machine.meta = meta;
+    }
+    machine.source = {
+      forwardedFor,
+      userAgent: requestUserAgent,
+      receivedAt: new Date().toISOString(),
+    };
 
-    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory } });
+    console.log(
+      `[heartbeat] ${machineId} – status=${machine.status} sensors=${JSON.stringify(machine.sensors)} source=${JSON.stringify(machine.source)} meta=${meta ? JSON.stringify(meta) : "-"}`
+    );
+
+    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory, meta } });
   } catch (err) {
     console.error("[heartbeat] error:", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
