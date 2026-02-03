@@ -2,8 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { machinesDB } from "../../lib/machines";
-
-const mockMachines: any[] = []; // plus de mock, on utilise les vraies données
+import { revalidatePath } from "next/cache";
 
 function MachineCard({ machine }: { machine: any }) {
   const isOnline = machine.status === "online";
@@ -97,12 +96,18 @@ function MachineCard({ machine }: { machine: any }) {
   );
 }
 
+// Server Action pour refresh
+async function refresh() {
+  "use server";
+  revalidatePath("/machines");
+}
+
 export default async function MachinesPage() {
   const jar = cookies();
   const session = jar.get("shaka_admin")?.value;
   if (!session) redirect("/login");
 
-  // Utilise directement la BDD partagée, plus de fetch HTTP
+  // Force la lecture à jour de la BDD partagée
   const machines = Object.values(machinesDB);
 
   return (
@@ -140,10 +145,12 @@ export default async function MachinesPage() {
               Gestion du parc, inventaire et santé des machines.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10">
-              🔄 Rafraîchir
-            </button>
+          <div className="flex gap-2">
+            <form action={refresh}>
+              <button type="submit" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10">
+                🔄 Actualiser
+              </button>
+            </form>
             <button className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-700">
               ➕ Ajouter une machine
             </button>
