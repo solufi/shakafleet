@@ -19,6 +19,8 @@ function MachineCard({ machine }: { machine: Machine }) {
   const isOnline = machine.status === "online";
   const totalStock = Object.values(machine.inventory || {}).reduce((a: number, b: any) => a + (b as number), 0);
   const lowStock = Object.entries(machine.inventory || {}).filter(([_, qty]) => (qty as number) < 5);
+  const doorOpen = machine.sensors?.doorOpen;
+  const snapshotSrc = machine.cameraSnapshot ? `${machine.cameraSnapshot}?v=${encodeURIComponent(String(machine.lastSeen || Date.now()))}` : null;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5 transition hover:border-white/20">
@@ -39,10 +41,10 @@ function MachineCard({ machine }: { machine: Machine }) {
         </div>
       </div>
 
-      {machine.cameraSnapshot ? (
+      {snapshotSrc ? (
         <div className="mt-4">
           <img
-            src={machine.cameraSnapshot}
+            src={snapshotSrc}
             alt={`Snapshot ${machine.id}`}
             className="h-32 w-full rounded-lg object-cover border border-white/10"
           />
@@ -74,11 +76,23 @@ function MachineCard({ machine }: { machine: Machine }) {
         </div>
       </div>
 
-      <div className="mt-4 rounded-lg bg-slate-800/40 p-3 text-xs">
-        <span className="text-white">
-          🌡️ {machine.sensors?.temp ?? "N/A"}°C • 💧 {machine.sensors?.humidity ?? "N/A"}% •
-          {machine.sensors?.doorOpen === true ? " 🚪 Ouverte" : machine.sensors?.doorOpen === false ? " 🚪 Fermée" : " 🚪 N/A"}
-        </span>
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-slate-800/40 p-3">
+        <div className="text-xs text-white">
+          🌡️ {machine.sensors?.temp ?? "N/A"}°C • 💧 {machine.sensors?.humidity ?? "N/A"}%
+        </div>
+
+        <div
+          className={
+            "rounded-md px-3 py-1 text-sm font-bold tracking-wide " +
+            (doorOpen === true
+              ? "bg-red-500/20 text-red-300 border border-red-500/30"
+              : doorOpen === false
+                ? "bg-green-500/20 text-green-300 border border-green-500/30"
+                : "bg-slate-700/30 text-slate-200 border border-white/10")
+          }
+        >
+          {doorOpen === true ? "PORTE OUVERTE" : doorOpen === false ? "PORTE FERMÉE" : "PORTE N/A"}
+        </div>
       </div>
 
       {lowStock.length > 0 && (
@@ -108,6 +122,23 @@ export function MachinesClient({ initialMachines }: { initialMachines: Machine[]
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const deleteMachine = async (id: string) => {
+    const ok = window.confirm(`Supprimer la machine ${id} ?`);
+    if (!ok) return;
+
+    setError(null);
+    try {
+      const res = await fetch(`/api/machines?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setMachines((prev) => prev.filter((m) => m.id !== id));
+      setLastRefreshAt(new Date());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  };
 
   const stats = useMemo(() => {
     const total = machines.length;
@@ -197,7 +228,18 @@ export function MachinesClient({ initialMachines }: { initialMachines: Machine[]
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {machines.map((machine) => (
-            <MachineCard key={machine.id} machine={machine} />
+            <div key={machine.id} className="relative">
+              <div className="absolute right-3 top-3 z-10">
+                <button
+                  type="button"
+                  onClick={() => void deleteMachine(machine.id)}
+                  className="rounded-md border border-white/20 bg-slate-950/60 px-2 py-1 text-xs font-medium text-white transition hover:bg-red-500/20 hover:border-red-500/30"
+                >
+                  Supprimer
+                </button>
+              </div>
+              <MachineCard machine={machine} />
+            </div>
           ))}
         </div>
       )}

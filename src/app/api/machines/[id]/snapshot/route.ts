@@ -14,8 +14,7 @@ async function getSnapshotFromAgent(machineId: string): Promise<Buffer | null> {
     Caméra indisponible (placeholder)
   </text>
 </svg>`;
-  const base64 = Buffer.from(svg.trim()).toString("base64");
-  return Buffer.from(`data:image/svg+xml;base64,${base64}`);
+  return Buffer.from(svg.trim());
 }
 
 export async function GET(
