@@ -1,0 +1,17 @@
+[Unit]
+Description=Shaka Kiosk Browser
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+User=shaka
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/shaka/.Xauthority
+ExecStart=/home/shaka/shaka-kiosk.sh
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=graphical-session.target

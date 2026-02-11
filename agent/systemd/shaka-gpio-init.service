@@ -1,0 +1,14 @@
+[Unit]
+Description=Shaka GPIO Init (keypad pins safe state)
+DefaultDependencies=no
+After=local-fs.target
+Before=shaka-vend.service shaka-ui.service shaka-kiosk.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/default/shaka-vend
+ExecStart=/usr/bin/python3 /home/shaka/gpio_init.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

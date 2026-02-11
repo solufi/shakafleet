@@ -1,0 +1,16 @@
+[Unit]
+Description=Shaka Vend Server (stdlib)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/shaka
+EnvironmentFile=/etc/default/shaka-vend
+EnvironmentFile=/etc/default/shaka-nayax
+ExecStart=/usr/bin/python3 /home/shaka/rpi_vend_server_stdlib.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
