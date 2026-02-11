@@ -127,12 +127,45 @@ def collect_sensors() -> Dict[str, Any]:
 
 
 def collect_proximity() -> Optional[Dict[str, Any]]:
-    """Collect proximity summary for heartbeat."""
+    """Collect full proximity analytics for heartbeat."""
+    result: Dict[str, Any] = {}
+
+    # Summary (compact totals)
     summary = _local_get("/proximity/summary")
     if summary and summary.get("ok"):
         summary.pop("ok", None)
-        return summary
-    return None
+        result["summary"] = summary
+
+    # Today stats (hourly breakdown)
+    today = _local_get("/proximity/stats/today")
+    if today and today.get("ok"):
+        today.pop("ok", None)
+        result["today"] = today
+
+    # Weekly stats
+    week = _local_get("/proximity/stats/week")
+    if week and week.get("ok"):
+        week.pop("ok", None)
+        result["week"] = week
+
+    # Recent events (last 30)
+    events = _local_get("/proximity/events")
+    if events and events.get("ok"):
+        result["events"] = (events.get("events") or [])[:30]
+
+    # Live sensor status
+    status = _local_get("/proximity/status")
+    if status and status.get("ok"):
+        result["live"] = {
+            "connected": status.get("connected", False),
+            "mode": status.get("mode", "unknown"),
+            "presence": status.get("presence"),
+            "engagement": status.get("engagement"),
+            "distance_mm": status.get("distance_mm"),
+            "gesture": status.get("gesture"),
+        }
+
+    return result if result else None
 
 
 def collect_nayax() -> Optional[Dict[str, Any]]:

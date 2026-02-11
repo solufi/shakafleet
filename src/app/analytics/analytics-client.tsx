@@ -118,26 +118,20 @@ export function AnalyticsClient({ machines }: { machines: Machine[] }) {
     setError(null);
 
     try {
-      const [todayRes, weekRes, eventsRes] = await Promise.all([
-        fetch(`/api/machines/${selectedMachine}/analytics?period=today`),
-        fetch(`/api/machines/${selectedMachine}/analytics?period=week`),
-        fetch(`/api/machines/${selectedMachine}/analytics?period=events`),
-      ]);
+      const res = await fetch(`/api/machines/${selectedMachine}/analytics?period=all`);
+      const data = await res.json();
 
-      if (!todayRes.ok || !weekRes.ok || !eventsRes.ok) {
-        const errData = await todayRes.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP ${todayRes.status}`);
+      if (data.error && !data.ok) {
+        throw new Error(data.error);
       }
 
-      const [today, week, evts] = await Promise.all([
-        todayRes.json(),
-        weekRes.json(),
-        eventsRes.json(),
-      ]);
-
-      setTodayData(today);
-      setWeekData(week);
-      setEvents(evts.events || []);
+      if (data.today) {
+        setTodayData({ ok: true, ...data.today });
+      }
+      if (data.week) {
+        setWeekData({ ok: true, ...data.week });
+      }
+      setEvents(data.events || []);
       setLastRefresh(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");

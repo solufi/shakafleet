@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { machinesDB } from "../../../../../lib/machines";
 
 /**
- * Proxy analytics requests to the RPi vend server.
- * GET /api/machines/:id/analytics?period=today|week|date&date=2026-02-11
+ * Serve analytics data from machinesDB (populated by heartbeat).
+ * GET /api/machines/:id/analytics?period=today|week|events|summary|all
  */
 export async function GET(
   request: NextRequest,
@@ -16,57 +16,58 @@ export async function GET(
     return NextResponse.json({ error: "Machine not found" }, { status: 404 });
   }
 
-  // Determine the RPi IP from machine metadata
-  const rpiIp = machine.source?.forwardedFor || machine.meta?.ip;
-  if (!rpiIp) {
+  const proximity = machine.proximity;
+  if (!proximity) {
     return NextResponse.json(
-      { error: "Machine IP not available. Wait for a heartbeat." },
-      { status: 503 }
+      {
+        ok: false,
+        error: "No proximity data yet. Waiting for heartbeat from RPi.",
+        machineId,
+      },
+      { status: 200 }
     );
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const period = searchParams.get("period") || "today";
-  const date = searchParams.get("date");
+  const period = searchParams.get("period") || "all";
 
-  let endpoint: string;
   switch (period) {
-    case "week":
-      endpoint = "/proximity/stats/week";
-      break;
-    case "date":
-      endpoint = `/proximity/stats/date/${date || new Date().toISOString().split("T")[0]}`;
-      break;
-    case "events":
-      endpoint = "/proximity/events";
-      break;
-    case "summary":
-      endpoint = "/proximity/summary";
-      break;
     case "today":
-    default:
-      endpoint = "/proximity/stats/today";
-      break;
-  }
-
-  try {
-    const rpiPort = 5001;
-    const url = `http://${rpiIp}:${rpiPort}${endpoint}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    const data = await res.json();
-    return NextResponse.json({ ...data, machineId, rpiIp });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Failed to reach RPi at ${rpiIp}: ${err instanceof Error ? err.message : "unknown"}`,
+      return NextResponse.json({
+        ok: true,
         machineId,
-      },
-      { status: 502 }
-    );
+        ...(proximity.today || { totals: null, hourly: [] }),
+      });
+    case "week":
+      return NextResponse.json({
+        ok: true,
+        machineId,
+        ...(proximity.week || { totals: null, daily: [] }),
+      });
+    case "events":
+      return NextResponse.json({
+        ok: true,
+        machineId,
+        events: proximity.events || [],
+        count: (proximity.events || []).length,
+      });
+    case "summary":
+      return NextResponse.json({
+        ok: true,
+        machineId,
+        ...(proximity.summary || {}),
+      });
+    case "all":
+    default:
+      return NextResponse.json({
+        ok: true,
+        machineId,
+        updatedAt: proximity.updatedAt,
+        summary: proximity.summary || null,
+        today: proximity.today || null,
+        week: proximity.week || null,
+        events: proximity.events || [],
+        live: proximity.live || null,
+      });
   }
 }
