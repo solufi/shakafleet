@@ -100,6 +100,8 @@ shakafleet/
 │   ├── nayax_marshall.py         # Protocole Marshall (Nayax)
 │   ├── shaka_nayax_service.py    # Daemon Nayax
 │   ├── shaka_proximity.py        # Daemon capteur proximité
+│   ├── proximity_logger.py       # Logging SQLite événements proximité
+│   ├── shaka_heartbeat.py        # Heartbeat vers Fleet Manager
 │   ├── evo_swipe_plus/           # Driver TeraRanger Evo Swipe Plus
 │   ├── gpio_init.py              # Init GPIO safe state
 │   ├── shaka-kiosk.sh            # Script kiosk Chromium

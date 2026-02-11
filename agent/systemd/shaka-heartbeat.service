@@ -1,0 +1,16 @@
+[Unit]
+Description=Shaka Heartbeat Service (Fleet Manager)
+After=network-online.target shaka-vend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/shaka
+EnvironmentFile=/etc/default/shaka-heartbeat
+ExecStart=/usr/bin/python3 /home/shaka/shaka_heartbeat.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

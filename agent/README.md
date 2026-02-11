@@ -187,6 +187,18 @@ sudo systemctl start shaka-gpio-init shaka-vend shaka-nayax
 | `EVO_STATE_FILE` | `/tmp/shaka_proximity_state.json` | Fichier d'état partagé |
 | `EVO_CALLBACK_URL` | *(vide)* | URL optionnelle pour POST des événements |
 
+### `/etc/default/shaka-heartbeat`
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `FLEET_URL` | `https://fleet.shakadistribution.ca` | URL du Fleet Manager |
+| `HEARTBEAT_ENDPOINT` | `/api/heartbeat` | Endpoint API heartbeat |
+| `MACHINE_ID` | `hostname` | Identifiant unique de la machine |
+| `MACHINE_LOCATION` | *(vide)* | Emplacement (ex: "Bureau Montréal") |
+| `HEARTBEAT_INTERVAL` | `30` | Intervalle d'envoi (sec) |
+| `VEND_SERVER_PORT` | `5001` | Port du serveur vend local |
+| `FIRMWARE_VERSION` | `1.0.0` | Version firmware agent |
+
 ---
 
 ## API Endpoints (port 5001)
@@ -324,6 +336,7 @@ Client (UI)                    Vend Server (:5001)              Nayax VPOS Touch
 | `shaka-vend` | Serveur HTTP vend (:5001) | gpio-init |
 | `shaka-nayax` | Daemon paiement Nayax | vend |
 | `shaka-proximity` | Capteur proximité Evo Swipe Plus | — |
+| `shaka-heartbeat` | Heartbeat vers Fleet Manager (30s) | vend, network |
 | `shaka-camera` | Serveur caméra | — |
 | `shaka-ui` | UI Next.js (:3000) | vend |
 | `shaka-kiosk` | Chromium plein écran | graphical-session |
@@ -335,12 +348,13 @@ Client (UI)                    Vend Server (:5001)              Nayax VPOS Touch
 journalctl -u shaka-vend -f
 journalctl -u shaka-nayax -f
 journalctl -u shaka-proximity -f
+journalctl -u shaka-heartbeat -f
 
 # Redémarrer un service
 sudo systemctl restart shaka-vend
 
 # Redémarrer tout
-sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-proximity shaka-camera shaka-ui shaka-kiosk
+sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-proximity shaka-heartbeat shaka-camera shaka-ui shaka-kiosk
 
 # Voir l'état de tous les services Shaka
 systemctl list-units 'shaka-*' --all
@@ -360,6 +374,7 @@ systemctl list-units 'shaka-*' --all
 ├── shaka_proximity.py            # Daemon capteur proximité
 ├── proximity_logger.py           # Logging SQLite des événements proximité
 ├── proximity_events.db           # Base de données SQLite (auto-créée)
+├── shaka_heartbeat.py            # Heartbeat vers Fleet Manager
 ├── evo_swipe_plus/               # Driver TeraRanger Evo Swipe Plus
 ├── gpio_init.py                  # Init GPIO safe state
 ├── camera_server.py              # Serveur caméra
@@ -369,13 +384,15 @@ systemctl list-units 'shaka-*' --all
 /etc/default/
 ├── shaka-vend                    # Config vend server
 ├── shaka-nayax                   # Config Nayax
-└── shaka-proximity               # Config capteur proximité
+├── shaka-proximity               # Config capteur proximité
+└── shaka-heartbeat               # Config heartbeat Fleet Manager
 
 /etc/systemd/system/
 ├── shaka-gpio-init.service
 ├── shaka-vend.service
 ├── shaka-nayax.service
 ├── shaka-proximity.service
+├── shaka-heartbeat.service
 ├── shaka-camera.service
 ├── shaka-ui.service
 └── shaka-kiosk.service
