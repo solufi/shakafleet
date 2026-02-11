@@ -13,6 +13,12 @@ type Machine = {
   sensors?: { temp?: number; humidity?: number; doorOpen?: boolean };
   firmware?: string;
   location?: string;
+  proximity?: {
+    summary?: { presence_today?: number; engagement_today?: number; gestures_today?: number; conversion_rate?: number };
+    live?: { connected?: boolean; mode?: string; presence?: { detected?: boolean; count?: number }; engagement?: string; distance_mm?: number[]; gesture?: { last?: string } };
+    updatedAt?: string;
+  };
+  meta?: { services?: Record<string, string>; disk?: { percent?: number; free_gb?: number }; nayax?: { connected?: boolean; simulation?: boolean; state?: string } };
 };
 
 function MachineCard({ machine }: { machine: Machine }) {
@@ -21,6 +27,9 @@ function MachineCard({ machine }: { machine: Machine }) {
   const lowStock = Object.entries(machine.inventory || {}).filter(([_, qty]) => (qty as number) < 5);
   const doorOpen = machine.sensors?.doorOpen;
   const snapshotSrc = machine.cameraSnapshot ? `${machine.cameraSnapshot}?v=${encodeURIComponent(String(machine.lastSeen || Date.now()))}` : null;
+  const prox = machine.proximity;
+  const proxSummary = prox?.summary;
+  const proxLive = prox?.live;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5 transition hover:border-white/20">
@@ -99,6 +108,47 @@ function MachineCard({ machine }: { machine: Machine }) {
         <div className="mt-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-2 text-xs">
           <span className="text-yellow-400">⚠️ Stock bas:</span>{" "}
           {lowStock.map(([product]) => product as string).join(", ")}
+        </div>
+      )}
+
+      {proxSummary && (
+        <div className="mt-3 rounded-lg border border-white/10 bg-slate-800/40 p-3">
+          <div className="mb-2 text-xs font-medium text-slate-300">Proximité (aujourd&apos;hui)</div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-lg font-semibold text-blue-400">{proxSummary.presence_today ?? 0}</div>
+              <div className="text-[10px] text-slate-500">Passages</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-emerald-400">{proxSummary.engagement_today ?? 0}</div>
+              <div className="text-[10px] text-slate-500">Engagements</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-purple-400">{proxSummary.gestures_today ?? 0}</div>
+              <div className="text-[10px] text-slate-500">Gestes</div>
+            </div>
+            <div>
+              <div className={`text-lg font-semibold ${(proxSummary.conversion_rate ?? 0) > 30 ? "text-green-400" : (proxSummary.conversion_rate ?? 0) > 10 ? "text-yellow-400" : "text-slate-400"}`}>
+                {proxSummary.conversion_rate ?? 0}%
+              </div>
+              <div className="text-[10px] text-slate-500">Conversion</div>
+            </div>
+          </div>
+          {proxLive && (
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${proxLive.connected ? "bg-green-400" : "bg-red-400"}`} />
+              <span>Capteur {proxLive.connected ? "connecté" : "déconnecté"}</span>
+              {proxLive.distance_mm && proxLive.distance_mm[0] > 0 && (
+                <span>• {proxLive.distance_mm[0]}mm</span>
+              )}
+              {proxLive.presence?.detected && (
+                <span className="text-blue-400">• Présence détectée</span>
+              )}
+              {proxLive.engagement === "engaged" && (
+                <span className="text-emerald-400">• Engagé</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
