@@ -1,13 +1,12 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getSession } from "../../../lib/session";
 
 export async function GET() {
-  const jar = await cookies();
-  const session = jar.get("shaka_admin")?.value;
+  const user = await getSession();
 
-  if (!session) {
+  if (!user) {
     return NextResponse.json({ ok: false, authenticated: false }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true, authenticated: true });
+  return NextResponse.json({ ok: true, authenticated: true, user });
 }

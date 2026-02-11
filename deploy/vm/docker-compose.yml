@@ -21,6 +21,8 @@ services:
       - NODE_ENV=production
     env_file:
       - .env
+    volumes:
+      - fleet_data:/app/data
     depends_on:
       - postgres
 
@@ -47,3 +49,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  fleet_data:

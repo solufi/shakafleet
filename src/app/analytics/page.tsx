@@ -42,6 +42,9 @@ export default async function AnalyticsPage() {
             <Link className="hover:text-white" href="/agents">
               Agents
             </Link>
+            <Link className="hover:text-white" href="/users">
+              Users
+            </Link>
           </nav>
         </div>
       </header>

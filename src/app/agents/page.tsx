@@ -33,6 +33,9 @@ export default function AgentsPage() {
             <Link className="hover:text-white" href="/analytics">
               Analytics
             </Link>
+            <Link className="hover:text-white" href="/users">
+              Users
+            </Link>
           </nav>
         </div>
       </header>

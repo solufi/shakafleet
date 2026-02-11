@@ -36,6 +36,9 @@ export default function HomePage() {
             <Link className="hover:text-white" href="/analytics">
               Analytics
             </Link>
+            <Link className="hover:text-white" href="/users">
+              Users
+            </Link>
             <a className="hover:text-white" href="/api/health">
               Health
             </a>
@@ -90,6 +93,17 @@ export default function HomePage() {
             <div className="text-lg font-medium">Analytics</div>
             <div className="mt-1 text-sm text-slate-300">
               Proximité, engagement, gestes, taux de conversion par machine.
+            </div>
+            <div className="mt-4 text-sm text-brand-500 group-hover:text-brand-400">Open →</div>
+          </Link>
+
+          <Link
+            href="/users"
+            className="group rounded-2xl border border-white/10 bg-slate-900/40 p-5 shadow-sm hover:border-white/20"
+          >
+            <div className="text-lg font-medium">Utilisateurs</div>
+            <div className="mt-1 text-sm text-slate-300">
+              Gestion des comptes, rôles et accès au Fleet Manager.
             </div>
             <div className="mt-4 text-sm text-brand-500 group-hover:text-brand-400">Open →</div>
           </Link>
