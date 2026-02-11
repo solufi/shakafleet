@@ -1,6 +1,6 @@
 # Shaka Agent — Raspberry Pi Vending Machine Controller
 
-Agent logiciel qui tourne sur chaque Raspberry Pi pour contrôler une machine distributrice Shaka. Gère le clavier matriciel (AMS), le relais, le capteur de chute optique, le capteur de porte magnétique, la caméra et le paiement Nayax (Marshall Protocol).
+Agent logiciel qui tourne sur chaque Raspberry Pi pour contrôler une machine distributrice Shaka. Gère le clavier matriciel (AMS), le relais, le capteur de chute optique, le capteur de porte magnétique, le capteur de proximité (Evo Swipe Plus), la caméra et le paiement Nayax (Marshall Protocol).
 
 ---
 
@@ -17,7 +17,7 @@ Agent logiciel qui tourne sur chaque Raspberry Pi pour contrôler une machine di
 │           │ HTTP                                            │
 │  ┌────────▼─────────────────────────────────────────────┐   │
 │  │  rpi_vend_server_stdlib.py (:5001)                   │   │
-│  │  API REST — vend, door, payment, nayax               │   │
+│  │  API REST — vend, door, payment, nayax, proximity   │   │
 │  └──┬──────────────┬──────────────────┬─────────────────┘   │
 │     │              │                  │                      │
 │  ┌──▼──────────┐ ┌─▼───────────┐ ┌───▼──────────────────┐  │
@@ -41,6 +41,13 @@ Agent logiciel qui tourne sur chaque Raspberry Pi pour contrôler une machine di
 │                                  │  │ (paiement carte) │ │  │
 │                                  │  └──────────────────┘ │  │
 │                                  └───────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ shaka_proximity.py (daemon)                          │   │
+│  │ evo_swipe_plus/ (driver)                             │   │
+│  │ /dev/ttyACM0 ← USB TeraRanger Evo Swipe Plus        │   │
+│  │ Modes: presence, swipe (gesture), bidirectional      │   │
+│  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌──────────────────┐                                       │
 │  │ camera_server.py │ ← USB Camera / mjpg-streamer          │
@@ -67,6 +74,7 @@ Agent logiciel qui tourne sur chaque Raspberry Pi pour contrôler une machine di
   - Capteur optique de chute sur GPIO 17
   - Capteur magnétique de porte sur GPIO 12
   - Caméra USB
+  - TeraRanger Evo Swipe Plus (USB, capteur de proximité/gestes)
   - *(Optionnel)* Adaptateur USB-RS232 + Nayax VPOS Touch
 
 ---
@@ -169,6 +177,16 @@ sudo systemctl start shaka-gpio-init shaka-vend shaka-nayax
 | `NAYAX_SIM_APPROVAL_DELAY` | `3.0` | Délai approbation simulation (sec) |
 | `NAYAX_SIM_AUTO_APPROVE` | `1` | `1` = auto-approuver en simulation |
 
+### `/etc/default/shaka-proximity`
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `EVO_SERIAL_PORT` | `/dev/ttyACM0` | Port USB du capteur Evo Swipe Plus |
+| `EVO_SENSOR_MODE` | `presence` | Mode: `presence`, `swipe`, `bidirectional` |
+| `EVO_PRESENCE_COOLDOWN` | `2.0` | Cooldown entre événements de présence (sec) |
+| `EVO_STATE_FILE` | `/tmp/shaka_proximity_state.json` | Fichier d'état partagé |
+| `EVO_CALLBACK_URL` | *(vide)* | URL optionnelle pour POST des événements |
+
 ---
 
 ## API Endpoints (port 5001)
@@ -190,6 +208,26 @@ sudo systemctl start shaka-gpio-init shaka-vend shaka-nayax
 | `POST` | `/nayax/vend-result` | `{"success": true}` | Rapporte le résultat du dispensing |
 | `POST` | `/nayax/cancel` | — | Annule la session en cours |
 | `POST` | `/nayax/reset` | — | Remet Nayax à idle |
+
+### Capteur de proximité (Evo Swipe Plus)
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| `GET` | `/proximity/status` | État complet du capteur (présence, distance, geste, engagement) |
+| `GET` | `/proximity/reset` | Reset du compteur de présence |
+
+Exemple de réponse `/proximity/status` :
+```json
+{
+  "connected": true,
+  "mode": "presence",
+  "presence": { "detected": true, "count": 42, "lastTime": 1770785372.24 },
+  "engagement": "engaged",
+  "gesture": { "last": "right", "lastTime": 1770785300.00 },
+  "distance_mm": [450, 0],
+  "recentEvents": [...]
+}
+```
 
 ### Paiement (legacy)
 
@@ -280,6 +318,7 @@ Client (UI)                    Vend Server (:5001)              Nayax VPOS Touch
 | `shaka-gpio-init` | Init GPIO au boot (oneshot) | — |
 | `shaka-vend` | Serveur HTTP vend (:5001) | gpio-init |
 | `shaka-nayax` | Daemon paiement Nayax | vend |
+| `shaka-proximity` | Capteur proximité Evo Swipe Plus | — |
 | `shaka-camera` | Serveur caméra | — |
 | `shaka-ui` | UI Next.js (:3000) | vend |
 | `shaka-kiosk` | Chromium plein écran | graphical-session |
@@ -290,12 +329,13 @@ Client (UI)                    Vend Server (:5001)              Nayax VPOS Touch
 # Voir les logs en temps réel
 journalctl -u shaka-vend -f
 journalctl -u shaka-nayax -f
+journalctl -u shaka-proximity -f
 
 # Redémarrer un service
 sudo systemctl restart shaka-vend
 
 # Redémarrer tout
-sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-camera shaka-ui shaka-kiosk
+sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-proximity shaka-camera shaka-ui shaka-kiosk
 
 # Voir l'état de tous les services Shaka
 systemctl list-units 'shaka-*' --all
@@ -312,6 +352,8 @@ systemctl list-units 'shaka-*' --all
 ├── rpi_vend_server.py            # Serveur Flask (alternatif)
 ├── nayax_marshall.py             # Module protocole Marshall (Nayax)
 ├── shaka_nayax_service.py        # Daemon Nayax
+├── shaka_proximity.py            # Daemon capteur proximité
+├── evo_swipe_plus/               # Driver TeraRanger Evo Swipe Plus
 ├── gpio_init.py                  # Init GPIO safe state
 ├── camera_server.py              # Serveur caméra
 ├── shaka-kiosk.sh                # Script kiosk Chromium
@@ -319,12 +361,14 @@ systemctl list-units 'shaka-*' --all
 
 /etc/default/
 ├── shaka-vend                    # Config vend server
-└── shaka-nayax                   # Config Nayax
+├── shaka-nayax                   # Config Nayax
+└── shaka-proximity               # Config capteur proximité
 
 /etc/systemd/system/
 ├── shaka-gpio-init.service
 ├── shaka-vend.service
 ├── shaka-nayax.service
+├── shaka-proximity.service
 ├── shaka-camera.service
 ├── shaka-ui.service
 └── shaka-kiosk.service
@@ -375,7 +419,7 @@ git clone <repo-shaka-main> Shaka-main
 cd Shaka-main && npm install && npm run build
 
 # 5. Redémarrer
-sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-ui shaka-kiosk
+sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-proximity shaka-ui shaka-kiosk
 ```
 
 ---
@@ -390,3 +434,5 @@ sudo systemctl restart shaka-gpio-init shaka-vend shaka-nayax shaka-ui shaka-kio
 | Keypad ne répond pas | Vérifier le câblage, tester avec `python3 shaka_validation2.py` (mode interactif) |
 | Nayax timeout | Vérifier baud rate (115200), câble RS232, config Nayax Core |
 | Door sensor inversé | Vérifier `DOOR_OPEN_STATE` dans `shaka_validation2.py` |
+| Evo Swipe Plus non détecté | Vérifier `ls /dev/ttyACM*`, installer `crcmod` et `pyserial` |
+| Proximité stale data | Vérifier `journalctl -u shaka-proximity -f`, redémarrer le service |

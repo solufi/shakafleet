@@ -226,6 +226,40 @@ def clear_payment_status() -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+
+# ---------------------------------------------------------------------------
+# Proximity Sensor (Evo Swipe Plus)
+# ---------------------------------------------------------------------------
+PROXIMITY_STATE_FILE = "/tmp/shaka_proximity_state.json"
+
+def get_proximity_status() -> Dict[str, Any]:
+    """Read proximity sensor state from JSON file written by shaka_proximity.py"""
+    try:
+        if os.path.exists(PROXIMITY_STATE_FILE):
+            with open(PROXIMITY_STATE_FILE, "r") as f:
+                data = json.load(f)
+            # Check if data is stale (>10s old)
+            last_update = data.get("lastUpdate", 0)
+            if time.time() - last_update > 10:
+                data["stale"] = True
+            data["ok"] = True
+            return data
+        return {"ok": True, "connected": False, "error": "No proximity state file"}
+    except Exception as e:
+        return {"ok": False, "connected": False, "error": str(e)}
+
+def reset_proximity_counter() -> Dict[str, Any]:
+    """Reset the presence counter on the Evo Swipe Plus sensor."""
+    try:
+        # Write a reset request that the proximity service will pick up
+        reset_file = "/tmp/shaka_proximity_reset"
+        with open(reset_file, "w") as f:
+            f.write("reset")
+        return {"ok": True, "message": "Reset requested"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def check_door_status() -> Dict[str, Any]:
     """Check door status via shaka_validation2.py"""
     script_path = os.getenv("SHAKA_SCRIPT", "/home/shaka/shaka_validation2.py")
@@ -423,6 +457,12 @@ class VendHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self._json_response({"ok": True, "message": "Vend server running"})
+        elif self.path == "/proximity/status":
+            result = get_proximity_status()
+            self._json_response(result, 200)
+        elif self.path == "/proximity/reset":
+            result = reset_proximity_counter()
+            self._json_response(result, 200)
         elif self.path == "/nayax/status":
             result = nayax_get_status()
             self._json_response(result, 200)

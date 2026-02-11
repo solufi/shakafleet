@@ -1,0 +1,15 @@
+[Unit]
+Description=Shaka Proximity Sensor (Evo Swipe Plus)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/shaka
+EnvironmentFile=/etc/default/shaka-proximity
+ExecStart=/usr/bin/python3 /home/shaka/shaka_proximity.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

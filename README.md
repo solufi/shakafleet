@@ -57,6 +57,7 @@ Logiciel embarqué sur chaque Raspberry Pi qui contrôle le hardware de la machi
 - **Relais GPIO** — contrôle direct du mécanisme de distribution
 - **Capteur de chute optique** — validation de la livraison produit
 - **Capteur de porte magnétique** — détection ouverture/fermeture
+- **Capteur de proximité** — TeraRanger Evo Swipe Plus (présence, gestes, engagement)
 - **Paiement Nayax** — protocole Marshall via RS232 (VPOS Touch)
 - **Caméra USB** — snapshots et streaming
 - **Kiosk Chromium** — interface client plein écran
@@ -76,6 +77,7 @@ sudo bash install.sh
 | `POST /vend` | Déclenche une vente (keypad ou relais) |
 | `POST /nayax/pay` | Démarre un paiement Nayax (multi-vend) |
 | `GET /nayax/status` | État du paiement en cours |
+| `GET /proximity/status` | État du capteur de proximité |
 | `GET /door-status` | État de la porte |
 | `GET /health` | Health check |
 
@@ -97,6 +99,8 @@ shakafleet/
 │   ├── rpi_vend_server_stdlib.py # Serveur HTTP (port 5001)
 │   ├── nayax_marshall.py         # Protocole Marshall (Nayax)
 │   ├── shaka_nayax_service.py    # Daemon Nayax
+│   ├── shaka_proximity.py        # Daemon capteur proximité
+│   ├── evo_swipe_plus/           # Driver TeraRanger Evo Swipe Plus
 │   ├── gpio_init.py              # Init GPIO safe state
 │   ├── shaka-kiosk.sh            # Script kiosk Chromium
 │   ├── install.sh                # Script d'installation automatique

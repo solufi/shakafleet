@@ -46,8 +46,8 @@ apt-get install -y -qq python3 python3-pip python3-venv python3-rpi-lgpio \
 
 # --- Python dependencies ---
 log "Installing Python packages..."
-pip3 install --break-system-packages RPi.GPIO pyserial flask flask-cors 2>/dev/null || \
-pip3 install RPi.GPIO pyserial flask flask-cors
+pip3 install --break-system-packages RPi.GPIO pyserial flask flask-cors crcmod 2>/dev/null || \
+pip3 install RPi.GPIO pyserial flask flask-cors crcmod
 
 # --- Copy agent scripts ---
 log "Copying agent scripts to ${SHAKA_HOME}..."
@@ -59,6 +59,7 @@ SCRIPTS=(
     "shaka_nayax_service.py"
     "gpio_init.py"
     "shaka-kiosk.sh"
+    "shaka_proximity.py"
 )
 
 for script in "${SCRIPTS[@]}"; do
@@ -73,6 +74,13 @@ done
 
 chmod +x "${SHAKA_HOME}/shaka-kiosk.sh" 2>/dev/null || true
 
+# --- Copy Evo Swipe Plus driver ---
+if [[ -d "${SCRIPT_DIR}/evo_swipe_plus" ]]; then
+    cp -r "${SCRIPT_DIR}/evo_swipe_plus" "${SHAKA_HOME}/evo_swipe_plus"
+    chown -R "${SHAKA_USER}:${SHAKA_USER}" "${SHAKA_HOME}/evo_swipe_plus"
+    log "  -> evo_swipe_plus/"
+fi
+
 # --- Copy environment configs ---
 log "Installing environment configs..."
 if [[ -f "${SCRIPT_DIR}/config/shaka-vend.env" ]]; then
@@ -85,12 +93,18 @@ if [[ -f "${SCRIPT_DIR}/config/shaka-nayax.env" ]]; then
     log "  -> /etc/default/shaka-nayax"
 fi
 
+if [[ -f "${SCRIPT_DIR}/config/shaka-proximity.env" ]]; then
+    cp "${SCRIPT_DIR}/config/shaka-proximity.env" /etc/default/shaka-proximity
+    log "  -> /etc/default/shaka-proximity"
+fi
+
 # --- Install systemd services ---
 log "Installing systemd services..."
 SERVICES=(
     "shaka-gpio-init.service"
     "shaka-vend.service"
     "shaka-nayax.service"
+    "shaka-proximity.service"
     "shaka-camera.service"
     "shaka-kiosk.service"
     "shaka-ui.service"
@@ -113,6 +127,7 @@ systemctl daemon-reload
 systemctl enable shaka-gpio-init.service
 systemctl enable shaka-vend.service
 systemctl enable shaka-nayax.service
+systemctl enable shaka-proximity.service 2>/dev/null || true
 
 # Optional services (enable if config exists)
 systemctl enable shaka-camera.service 2>/dev/null || true
@@ -124,6 +139,7 @@ log "Starting core services..."
 systemctl start shaka-gpio-init.service || warn "GPIO init failed (may need reboot)"
 systemctl start shaka-vend.service
 systemctl start shaka-nayax.service
+systemctl start shaka-proximity.service || warn "Proximity sensor not found (check USB)"
 
 # --- Summary ---
 echo ""
@@ -132,19 +148,22 @@ echo -e "${GREEN}  Shaka Agent installed successfully!${NC}"
 echo "============================================="
 echo ""
 echo "Services:"
-systemctl --no-pager status shaka-vend.service shaka-nayax.service 2>/dev/null | grep -E "Active:|●" || true
+systemctl --no-pager status shaka-vend.service shaka-nayax.service shaka-proximity.service 2>/dev/null | grep -E "Active:|●" || true
 echo ""
 echo "Config files:"
 echo "  /etc/default/shaka-vend"
 echo "  /etc/default/shaka-nayax"
+echo "  /etc/default/shaka-proximity"
 echo ""
 echo "Test:"
 echo "  curl http://localhost:5001/health"
 echo "  curl http://localhost:5001/nayax/status"
+echo "  curl http://localhost:5001/proximity/status"
 echo ""
 echo "Logs:"
 echo "  journalctl -u shaka-vend -f"
 echo "  journalctl -u shaka-nayax -f"
+echo "  journalctl -u shaka-proximity -f"
 echo ""
 echo "Next steps:"
 echo "  1. Edit /etc/default/shaka-vend (ACTIVE_LOW, etc.)"
