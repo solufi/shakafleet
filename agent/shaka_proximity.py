@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from evo_swipe_plus.Evo_Swipe_Plus_py3 import Evo_Swipe_Plus
+from proximity_logger import init_db, log_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -131,6 +132,13 @@ def read_sensor_loop(sensor: Evo_Swipe_Plus):
     state.connected = True
     state.persist()
 
+    # Initialize the SQLite database for persistent logging
+    try:
+        init_db()
+        logger.info("Proximity event database initialized")
+    except Exception as e:
+        logger.error(f"Failed to init DB: {e}")
+
     last_persist = 0.0
     last_presence_event = 0.0
 
@@ -181,6 +189,7 @@ def read_sensor_loop(sensor: Evo_Swipe_Plus):
                         state.add_event("gesture", gesture)
                         logger.info(f"Gesture: {gesture}")
                         _notify_event("gesture", gesture)
+                        log_event(f"gesture_{gesture}", gesture, distance_mm=state.distance_mm[0])
 
             elif header == b'PP':
                 # Presence status + counter
@@ -203,6 +212,7 @@ def read_sensor_loop(sensor: Evo_Swipe_Plus):
                             state.add_event("presence", {"count": count, "status": str(presence_raw)})
                             logger.info(f"Presence #{count}: {presence_raw}")
                             _notify_event("presence", {"count": count})
+                            log_event("presence", {"count": count, "status": str(presence_raw)}, distance_mm=state.distance_mm[0])
 
             elif header == b'PR':
                 # Presence counter reset response
@@ -227,6 +237,8 @@ def read_sensor_loop(sensor: Evo_Swipe_Plus):
                     state.add_event("engagement", state.engagement_status)
                     logger.info(f"Engagement: {state.engagement_status}")
                     _notify_event("engagement", state.engagement_status)
+                    if state.engagement_status == "engaged":
+                        log_event("engagement", state.engagement_status, distance_mm=state.distance_mm[0])
 
             elif header == b'VV':
                 # Validation status

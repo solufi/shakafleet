@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from nayax_marshall import get_nayax, VendItem, VendSession, NayaxState, PaymentResult
+from proximity_logger import init_db as init_proximity_db, get_today_stats, get_daily_stats, get_weekly_stats, get_recent_events, get_summary_for_heartbeat
 
 
 
@@ -460,6 +461,23 @@ class VendHandler(BaseHTTPRequestHandler):
         elif self.path == "/proximity/status":
             result = get_proximity_status()
             self._json_response(result, 200)
+        elif self.path == "/proximity/stats/today":
+            result = get_today_stats()
+            self._json_response(result, 200)
+        elif self.path == "/proximity/stats/week":
+            result = get_weekly_stats()
+            self._json_response(result, 200)
+        elif self.path.startswith("/proximity/stats/date/"):
+            date_str = self.path.split("/")[-1]
+            result = get_daily_stats(date_str)
+            self._json_response(result, 200)
+        elif self.path == "/proximity/events":
+            result = get_recent_events(50)
+            self._json_response(result, 200)
+        elif self.path == "/proximity/summary":
+            result = get_summary_for_heartbeat()
+            result["ok"] = True
+            self._json_response(result, 200)
         elif self.path == "/proximity/reset":
             result = reset_proximity_counter()
             self._json_response(result, 200)
@@ -505,6 +523,10 @@ class VendHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    try:
+        init_proximity_db()
+    except Exception:
+        pass
     port = int(os.environ.get("PORT", 5001))
     server_address = ("", port)
     httpd = HTTPServer(server_address, VendHandler)

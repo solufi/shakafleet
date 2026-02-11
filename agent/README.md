@@ -215,6 +215,11 @@ sudo systemctl start shaka-gpio-init shaka-vend shaka-nayax
 |---------|-------|-------------|
 | `GET` | `/proximity/status` | État complet du capteur (présence, distance, geste, engagement) |
 | `GET` | `/proximity/reset` | Reset du compteur de présence |
+| `GET` | `/proximity/stats/today` | Stats agrégées du jour (par heure) |
+| `GET` | `/proximity/stats/week` | Stats agrégées des 7 derniers jours |
+| `GET` | `/proximity/stats/date/{YYYY-MM-DD}` | Stats d'une date spécifique |
+| `GET` | `/proximity/events` | 50 derniers événements bruts |
+| `GET` | `/proximity/summary` | Résumé compact (pour heartbeat) |
 
 Exemple de réponse `/proximity/status` :
 ```json
@@ -353,6 +358,8 @@ systemctl list-units 'shaka-*' --all
 ├── nayax_marshall.py             # Module protocole Marshall (Nayax)
 ├── shaka_nayax_service.py        # Daemon Nayax
 ├── shaka_proximity.py            # Daemon capteur proximité
+├── proximity_logger.py           # Logging SQLite des événements proximité
+├── proximity_events.db           # Base de données SQLite (auto-créée)
 ├── evo_swipe_plus/               # Driver TeraRanger Evo Swipe Plus
 ├── gpio_init.py                  # Init GPIO safe state
 ├── camera_server.py              # Serveur caméra

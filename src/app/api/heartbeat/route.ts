@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       firmware,
       uptime,
       meta,
+      proximity,
     } = body;
 
     const forwardedFor = request.headers.get("x-forwarded-for") || undefined;
@@ -58,6 +59,14 @@ export async function POST(request: NextRequest) {
     if (uptime) machine.uptime = uptime;
     else machine.uptime = computeUptime(machine.firstSeen);
 
+    // Proximity analytics (sent by RPi agent)
+    if (proximity) {
+      machine.proximity = {
+        ...proximity,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     // Debug provenance (pour identifier les ghost machines)
     if (meta) {
       machine.meta = meta;
@@ -69,10 +78,10 @@ export async function POST(request: NextRequest) {
     };
 
     console.log(
-      `[heartbeat] ${machineId} – status=${machine.status} sensors=${JSON.stringify(machine.sensors)} source=${JSON.stringify(machine.source)} meta=${meta ? JSON.stringify(meta) : "-"}`
+      `[heartbeat] ${machineId} – status=${machine.status} sensors=${JSON.stringify(machine.sensors)} proximity=${proximity ? JSON.stringify(proximity) : "-"} source=${JSON.stringify(machine.source)} meta=${meta ? JSON.stringify(meta) : "-"}`
     );
 
-    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory, meta } });
+    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory, meta, proximity } });
   } catch (err) {
     console.error("[heartbeat] error:", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });

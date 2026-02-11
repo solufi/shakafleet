@@ -60,6 +60,7 @@ SCRIPTS=(
     "gpio_init.py"
     "shaka-kiosk.sh"
     "shaka_proximity.py"
+    "proximity_logger.py"
 )
 
 for script in "${SCRIPTS[@]}"; do

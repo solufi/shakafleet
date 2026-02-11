@@ -2,18 +2,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { machinesDB } from "../../lib/machines";
-import { MachinesClient } from "./machines-client";
+import { AnalyticsClient } from "./analytics-client";
 
-export default async function MachinesPage() {
+export default async function AnalyticsPage() {
   const jar = cookies();
   const session = jar.get("shaka_admin")?.value;
   if (!session) redirect("/login");
 
-  // Valeur initiale (évite erreurs de sérialisation Date) — le vrai refresh se fait côté client
   const machines = Object.values(machinesDB).map((m: any) => ({
-    ...m,
-    lastSeen: m.lastSeen instanceof Date ? m.lastSeen.toISOString() : m.lastSeen,
-    firstSeen: m.firstSeen instanceof Date ? m.firstSeen.toISOString() : m.firstSeen,
+    id: m.id,
+    name: m.name,
+    status: m.status,
+    location: m.location,
   }));
 
   return (
@@ -28,7 +28,7 @@ export default async function MachinesPage() {
             />
             <div className="leading-tight">
               <div className="text-sm text-slate-300">Shaka</div>
-              <div className="text-lg font-semibold tracking-tight">Machines</div>
+              <div className="text-lg font-semibold tracking-tight">Analytics</div>
             </div>
           </div>
 
@@ -36,18 +36,18 @@ export default async function MachinesPage() {
             <Link className="hover:text-white" href="/">
               Dashboard
             </Link>
+            <Link className="hover:text-white" href="/machines">
+              Machines
+            </Link>
             <Link className="hover:text-white" href="/agents">
               Agents
-            </Link>
-            <Link className="hover:text-white" href="/analytics">
-              Analytics
             </Link>
           </nav>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <MachinesClient initialMachines={machines} />
+        <AnalyticsClient machines={machines} />
       </main>
     </div>
   );

@@ -30,6 +30,9 @@ export default function AgentsPage() {
             <Link className="hover:text-white" href="/machines">
               Machines
             </Link>
+            <Link className="hover:text-white" href="/analytics">
+              Analytics
+            </Link>
           </nav>
         </div>
       </header>
