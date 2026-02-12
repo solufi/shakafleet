@@ -474,6 +474,150 @@ def check_pending_sync():
 
 
 # ---------------------------------------------------------------------------
+# WebSocket transport
+# ---------------------------------------------------------------------------
+_ws = None  # websocket.WebSocketApp instance or None
+_ws_connected = False
+_ws_thread = None
+
+try:
+    import websocket as _websocket_mod
+    HAS_WEBSOCKET = True
+except ImportError:
+    HAS_WEBSOCKET = False
+    logger.warning("websocket-client not installed – WebSocket transport disabled (pip3 install websocket-client)")
+
+
+def _build_ws_url() -> str:
+    """Convert FLEET_URL (https://...) to wss://... /ws"""
+    url = FLEET_URL.rstrip("/")
+    if url.startswith("https://"):
+        return url.replace("https://", "wss://", 1) + "/ws"
+    elif url.startswith("http://"):
+        return url.replace("http://", "ws://", 1) + "/ws"
+    return f"wss://{url}/ws"
+
+
+def _apply_sync_products(products: list):
+    """Apply a sync-products message received via WebSocket."""
+    logger.info(f"[ws] Received sync-products: {len(products)} products")
+
+    # Save images
+    images_saved = 0
+    clean_products = []
+    for p in products:
+        img_b64 = p.pop("_imageBase64", None)
+        if img_b64 and p.get("imageId"):
+            if _save_product_image(p["imageId"], img_b64):
+                images_saved += 1
+        clean_products.append(p)
+
+    if images_saved:
+        logger.info(f"[ws] Saved {images_saved} product images")
+
+    # Push to local Shaka UI
+    try:
+        local_url = "http://127.0.0.1:3000/api/local-products"
+        payload = json.dumps({"products": clean_products}).encode("utf-8")
+        local_req = urllib.request.Request(
+            local_url, data=payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(local_req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+            logger.info(f"[ws] Local sync applied: {result}")
+    except Exception as e:
+        logger.warning(f"[ws] Failed to apply sync locally: {e}")
+
+
+def _ws_on_message(ws_app, raw):
+    global _ws_connected
+    try:
+        msg = json.loads(raw)
+        msg_type = msg.get("type", "")
+
+        if msg_type == "auth-ok":
+            _ws_connected = True
+            logger.info(f"[ws] Authenticated as {msg.get('machineId')}")
+
+        elif msg_type == "heartbeat-ack":
+            pass  # silent ack
+
+        elif msg_type == "sync-products":
+            products = msg.get("products", [])
+            _apply_sync_products(products)
+            # Send ack
+            try:
+                ws_app.send(json.dumps({"type": "sync-ack", "status": "ok", "count": len(products)}))
+            except Exception:
+                pass
+
+        elif msg_type == "error":
+            logger.warning(f"[ws] Server error: {msg.get('error')}")
+
+        else:
+            logger.debug(f"[ws] Unknown message type: {msg_type}")
+
+    except Exception as e:
+        logger.warning(f"[ws] Bad message: {e}")
+
+
+def _ws_on_open(ws_app):
+    logger.info("[ws] Connection opened, authenticating...")
+    ws_app.send(json.dumps({"type": "auth", "machineId": MACHINE_ID}))
+
+
+def _ws_on_close(ws_app, close_status_code, close_msg):
+    global _ws_connected
+    _ws_connected = False
+    logger.info(f"[ws] Connection closed (code={close_status_code})")
+
+
+def _ws_on_error(ws_app, error):
+    global _ws_connected
+    _ws_connected = False
+    logger.debug(f"[ws] Error: {error}")
+
+
+def _start_ws_connection():
+    """Start WebSocket connection in a background thread."""
+    global _ws, _ws_thread, _ws_connected
+    import threading
+
+    ws_url = _build_ws_url()
+    logger.info(f"[ws] Connecting to {ws_url}")
+
+    _ws = _websocket_mod.WebSocketApp(
+        ws_url,
+        on_open=_ws_on_open,
+        on_message=_ws_on_message,
+        on_close=_ws_on_close,
+        on_error=_ws_on_error,
+    )
+
+    _ws_thread = threading.Thread(
+        target=_ws.run_forever,
+        kwargs={"ping_interval": 25, "ping_timeout": 10, "reconnect": 5},
+        daemon=True,
+    )
+    _ws_thread.start()
+
+
+def _send_heartbeat_ws(payload: Dict[str, Any]) -> bool:
+    """Send heartbeat via WebSocket. Returns True if sent."""
+    global _ws, _ws_connected
+    if not _ws or not _ws_connected:
+        return False
+    try:
+        _ws.send(json.dumps({"type": "heartbeat", "data": payload}))
+        return True
+    except Exception as e:
+        logger.debug(f"[ws] Send failed: {e}")
+        _ws_connected = False
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 def signal_handler(signum, frame):
@@ -493,6 +637,14 @@ def main():
     logger.info(f"  Fleet URL  : {FLEET_URL}")
     logger.info(f"  Interval   : {HEARTBEAT_INTERVAL}s")
     logger.info(f"  Vend port  : {VEND_SERVER_PORT}")
+    logger.info(f"  WebSocket  : {'enabled' if HAS_WEBSOCKET else 'disabled'}")
+
+    # Start WebSocket connection if available
+    if HAS_WEBSOCKET:
+        try:
+            _start_ws_connection()
+        except Exception as e:
+            logger.warning(f"[ws] Failed to start: {e}")
 
     consecutive_failures = 0
     send_count = 0
@@ -500,26 +652,39 @@ def main():
     while _running:
         try:
             payload = build_payload()
-            success = send_heartbeat(payload)
 
-            if success:
+            # Try WebSocket first, fall back to HTTP
+            ws_ok = _send_heartbeat_ws(payload)
+            if ws_ok:
                 send_count += 1
                 if consecutive_failures > 0:
-                    logger.info(f"Heartbeat restored after {consecutive_failures} failures")
+                    logger.info(f"Heartbeat restored (via WS) after {consecutive_failures} failures")
                 consecutive_failures = 0
                 if send_count == 1 or send_count % 10 == 0:
                     prox = payload.get("proximity", {})
-                    logger.info(f"Heartbeat #{send_count} sent: {MACHINE_ID} status={payload['status']} presence={prox.get('presence_today', 0)} engagement={prox.get('engagement_today', 0)}")
-
-                # Check for pending product sync from fleet manager
-                try:
-                    check_pending_sync()
-                except Exception as e:
-                    logger.debug(f"Sync check error: {e}")
+                    logger.info(f"Heartbeat #{send_count} sent via WS: {MACHINE_ID} status={payload['status']} presence={prox.get('presence_today', 0)}")
+                # No need to check pending sync – WS delivers instantly
             else:
-                consecutive_failures += 1
-                if consecutive_failures == 1 or consecutive_failures % 10 == 0:
-                    logger.warning(f"Heartbeat failed ({consecutive_failures} consecutive)")
+                # HTTP fallback
+                success = send_heartbeat(payload)
+                if success:
+                    send_count += 1
+                    if consecutive_failures > 0:
+                        logger.info(f"Heartbeat restored (via HTTP) after {consecutive_failures} failures")
+                    consecutive_failures = 0
+                    if send_count == 1 or send_count % 10 == 0:
+                        prox = payload.get("proximity", {})
+                        logger.info(f"Heartbeat #{send_count} sent via HTTP: {MACHINE_ID} status={payload['status']} presence={prox.get('presence_today', 0)}")
+
+                    # Check for pending product sync (HTTP polling fallback)
+                    try:
+                        check_pending_sync()
+                    except Exception as e:
+                        logger.debug(f"Sync check error: {e}")
+                else:
+                    consecutive_failures += 1
+                    if consecutive_failures == 1 or consecutive_failures % 10 == 0:
+                        logger.warning(f"Heartbeat failed ({consecutive_failures} consecutive, WS={'connected' if _ws_connected else 'disconnected'})")
 
         except Exception as e:
             consecutive_failures += 1
@@ -530,6 +695,13 @@ def main():
             if not _running:
                 break
             time.sleep(0.5)
+
+    # Cleanup
+    if _ws:
+        try:
+            _ws.close()
+        except Exception:
+            pass
 
     logger.info("Shaka Heartbeat Service stopped")
 

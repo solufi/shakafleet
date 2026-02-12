@@ -27,18 +27,34 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "products array requis" }, { status: 400 });
     }
 
-    // Store pending sync – the RPi heartbeat will pull this
+    // Try WebSocket push first (instant delivery)
+    const wsBroadcast = (globalThis as any).__wsBroadcast;
+    if (wsBroadcast && wsBroadcast(machineId, {
+      type: "sync-products",
+      products,
+      queuedAt: new Date().toISOString(),
+    })) {
+      console.log(`[sync-products] Pushed ${products.length} products to ${machineId} via WebSocket (instant)`);
+      return NextResponse.json({
+        ok: true,
+        message: `${products.length} produits synchronisés instantanément via WebSocket.`,
+        transport: "websocket",
+      });
+    }
+
+    // Fallback: store pending sync – the RPi heartbeat will pull this via HTTP
     machine.pendingSync = {
       products,
       queuedAt: new Date().toISOString(),
       queuedBy: me.email,
     };
 
-    console.log(`[sync-products] Queued ${products.length} products for ${machineId} (will be pulled by heartbeat)`);
+    console.log(`[sync-products] Queued ${products.length} products for ${machineId} (WS unavailable, will be pulled by heartbeat)`);
 
     return NextResponse.json({
       ok: true,
       message: `${products.length} produits en attente de synchronisation. La machine les récupérera au prochain heartbeat (~30s).`,
+      transport: "http-pending",
     });
   } catch (err) {
     console.error(`[sync-products] Error for ${machineId}:`, err);
