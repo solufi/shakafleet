@@ -47,8 +47,8 @@ AGENT_VERSION = "2.1.0"
 CAMERA_SERVER_PORT = int(os.getenv("CAMERA_SERVER_PORT", "5002"))
 CAMERA_IDS = [int(x) for x in os.getenv("CAMERA_IDS", "0").split(",") if x.strip()]
 SNAPSHOT_INTERVAL = int(os.getenv("SNAPSHOT_INTERVAL", "300"))  # every 5 min
-PRODUCTS_FILE = os.getenv("PRODUCTS_FILE", "/home/shaka/Shaka-main/products.json")
-INVENTORY_FILE = os.getenv("INVENTORY_FILE", "/home/shaka/Shaka-main/inventory.json")
+PRODUCTS_FILE = os.getenv("PRODUCTS_FILE", "/home/shaka/Shaka-main/local-cache/products.json")
+INVENTORY_FILE = os.getenv("INVENTORY_FILE", "/home/shaka/Shaka-main/local-cache/inventory.json")
 
 _running = True
 
