@@ -401,12 +401,40 @@ def send_heartbeat(payload: Dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 # Product sync (pull from fleet manager)
 # ---------------------------------------------------------------------------
+PRODUCT_IMAGES_DIR = "/home/shaka/Shaka-main/public/images/products"
+
+
+def _save_product_image(image_id: str, data_url: str) -> bool:
+    """Save a base64 data-URL image to the local product images folder."""
+    try:
+        import base64 as b64mod
+
+        # data:image/webp;base64,AAAA...
+        if not data_url.startswith("data:image/"):
+            return False
+        header, encoded = data_url.split(",", 1)
+        # Determine extension from mime
+        mime = header.split(":")[1].split(";")[0]  # e.g. image/webp
+        ext_map = {"image/webp": ".webp", "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/gif": ".gif"}
+        ext = ext_map.get(mime, ".webp")
+
+        os.makedirs(PRODUCT_IMAGES_DIR, exist_ok=True)
+        filepath = os.path.join(PRODUCT_IMAGES_DIR, f"{image_id}{ext}")
+        with open(filepath, "wb") as f:
+            f.write(b64mod.b64decode(encoded))
+        logger.info(f"Saved product image: {filepath} ({len(encoded)//1024}KB)")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to save image for {image_id}: {e}")
+        return False
+
+
 def check_pending_sync():
     """Check fleet manager for pending product sync and apply locally."""
     url = f"{FLEET_URL}/api/machines/{MACHINE_ID}/sync-products"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": f"ShakaAgent/{FIRMWARE_VERSION}"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
 
         if not data.get("pending"):
@@ -415,9 +443,22 @@ def check_pending_sync():
         products = data.get("products", [])
         logger.info(f"Pending sync received: {len(products)} products (queued at {data.get('queuedAt', '?')})")
 
+        # Save images from base64 and strip _imageBase64 before sending to local UI
+        images_saved = 0
+        clean_products = []
+        for p in products:
+            img_b64 = p.pop("_imageBase64", None)
+            if img_b64 and p.get("imageId"):
+                if _save_product_image(p["imageId"], img_b64):
+                    images_saved += 1
+            clean_products.append(p)
+
+        if images_saved:
+            logger.info(f"Saved {images_saved} product images to {PRODUCT_IMAGES_DIR}")
+
         # Push to local Shaka UI
         local_url = "http://127.0.0.1:3000/api/local-products"
-        payload = json.dumps({"products": products}).encode("utf-8")
+        payload = json.dumps({"products": clean_products}).encode("utf-8")
         local_req = urllib.request.Request(
             local_url,
             data=payload,

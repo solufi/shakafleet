@@ -72,6 +72,9 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
   const [formError, setFormError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const formImageRef = useRef<HTMLInputElement>(null);
+  const [formImageFile, setFormImageFile] = useState<File | null>(null);
+  const [formImagePreview, setFormImagePreview] = useState<string | null>(null);
 
   const apiBase = `/api/machines/${machineId}/products`;
 
@@ -109,6 +112,8 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setCreating(true);
     setEditing(null);
     setFormError(null);
+    setFormImageFile(null);
+    setFormImagePreview(null);
   };
 
   const openEdit = (product: Product) => {
@@ -127,18 +132,23 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setEditing(product);
     setCreating(false);
     setFormError(null);
+    setFormImageFile(null);
+    setFormImagePreview(`/api/machines/${machineId}/products/${product.id}/image?v=${Date.now()}`);
   };
 
   const closeForm = () => {
     setEditing(null);
     setCreating(false);
     setFormError(null);
+    setFormImageFile(null);
+    setFormImagePreview(null);
   };
 
   const handleSave = async () => {
     setSaving(true);
     setFormError(null);
     try {
+      let savedProductId: string | null = null;
       if (creating) {
         const res = await fetch(apiBase, {
           method: "POST",
@@ -147,6 +157,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
+        savedProductId = data.product?.id || null;
       } else if (editing) {
         const res = await fetch(apiBase, {
           method: "PATCH",
@@ -155,7 +166,21 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
+        savedProductId = editing.id;
       }
+
+      // Upload image if a file was selected
+      if (formImageFile && savedProductId) {
+        const fd = new FormData();
+        fd.append("image", formImageFile);
+        const imgRes = await fetch(`/api/machines/${machineId}/products/${savedProductId}/image`, {
+          method: "POST",
+          body: fd,
+        });
+        const imgData = await imgRes.json();
+        if (!imgData.ok) console.warn("Image upload warning:", imgData.error);
+      }
+
       closeForm();
       await fetchData();
     } catch (e: any) {
@@ -215,15 +240,31 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setSyncing(true);
     setSyncMsg(null);
     try {
-      // Get machine IP from meta
-      const ip = machine?.meta?.ip;
-      if (!ip) throw new Error("IP de la machine inconnue");
-
       const visibleProducts = products.filter((p) => p.visible !== false);
+
+      // Fetch images as base64 to include in sync
+      const productsWithImages = await Promise.all(
+        visibleProducts.map(async (p) => {
+          try {
+            const imgRes = await fetch(`/api/machines/${machineId}/products/${p.id}/image?v=${Date.now()}`);
+            if (imgRes.ok && imgRes.headers.get("content-type")?.startsWith("image/")) {
+              const blob = await imgRes.blob();
+              const base64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+              });
+              return { ...p, _imageBase64: base64 };
+            }
+          } catch { /* ignore */ }
+          return p;
+        })
+      );
+
       const res = await fetch(`/api/machines/${machineId}/sync-products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ products: visibleProducts }),
+        body: JSON.stringify({ products: productsWithImages }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Sync failed");
@@ -340,10 +381,55 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                 className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500" />
             </div>
             <div className="grid gap-1">
-              <label className="text-xs text-slate-400">Image ID</label>
+              <label className="text-xs text-slate-400">Image du produit</label>
+              <div className="flex items-center gap-3">
+                {/* Preview */}
+                <div className="h-16 w-16 flex-shrink-0 rounded-lg bg-slate-800/60 overflow-hidden border border-white/10">
+                  {formImagePreview ? (
+                    <img
+                      src={formImageFile ? formImagePreview : formImagePreview}
+                      alt="Preview"
+                      className="h-full w-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">Aucune</div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => formImageRef.current?.click()}
+                    className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white hover:bg-white/10 transition"
+                  >
+                    {formImageFile ? "Changer l\u2019image" : "Choisir une image"}
+                  </button>
+                  {formImageFile && (
+                    <span className="text-[10px] text-slate-400 truncate max-w-[140px]">{formImageFile.name}</span>
+                  )}
+                  <input
+                    ref={formImageRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setFormImageFile(file);
+                        const url = URL.createObjectURL(file);
+                        setFormImagePreview(url);
+                        // Auto-set imageId from filename (without extension)
+                        const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[\s_]+/g, "-").toLowerCase();
+                        updateField("imageId", baseName);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              {/* Keep imageId as hidden/small field for advanced users */}
               <input value={form.imageId} onChange={(e) => updateField("imageId", e.target.value)}
-                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
-                placeholder="grenade-cookie" />
+                className="mt-1 h-8 rounded-md bg-slate-950/50 px-2 text-[11px] text-slate-400 outline-none ring-1 ring-white/5 focus:ring-white/10"
+                placeholder="image-id (auto)" />
             </div>
             <div className="md:col-span-3 grid gap-1">
               <label className="text-xs text-slate-400">Description</label>
