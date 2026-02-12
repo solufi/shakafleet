@@ -59,16 +59,23 @@ function writeProducts(machineId: string, products: Product[]) {
 
 // In-memory cache per machine
 const _cache: Record<string, Product[]> = {};
+// Track which machines have been initialized (managed at least once)
+const _initialized: Set<string> = new Set();
 
 function getProducts(machineId: string): Product[] {
   if (!_cache[machineId]) {
     _cache[machineId] = readProducts(machineId);
+  }
+  // If products exist on disk, mark as initialized
+  if (_cache[machineId].length > 0) {
+    _initialized.add(machineId);
   }
   return _cache[machineId];
 }
 
 function persist(machineId: string, products: Product[]) {
   _cache[machineId] = products;
+  _initialized.add(machineId);
   writeProducts(machineId, products);
 }
 
@@ -142,10 +149,20 @@ export function reorderProducts(machineId: string, orderedIds: string[]): Produc
   return all;
 }
 
+export function isInitialized(machineId: string): boolean {
+  // Check disk if not in memory yet
+  if (!_initialized.has(machineId)) {
+    const file = productsFile(machineId);
+    if (fs.existsSync(file)) _initialized.add(machineId);
+  }
+  return _initialized.has(machineId);
+}
+
 export function importProducts(machineId: string, products: Product[]): Product[] {
   // Import products from heartbeat data (initial sync)
+  if (isInitialized(machineId)) return getProducts(machineId); // Don't overwrite if already managed
   const existing = getProducts(machineId);
-  if (existing.length > 0) return existing; // Don't overwrite if already managed
+  if (existing.length > 0) return existing;
 
   const imported = products.map((p, i) => ({
     ...p,

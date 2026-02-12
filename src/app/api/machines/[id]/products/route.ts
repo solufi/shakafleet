@@ -7,6 +7,7 @@ import {
   deleteProduct,
   reorderProducts,
   importProducts,
+  isInitialized,
   type Product,
 } from "../../../../../lib/products";
 import { machinesDB } from "../../../../../lib/machines";
@@ -22,8 +23,8 @@ export async function GET(
   const machineId = params.id;
   let products = listProducts(machineId);
 
-  // Auto-import from heartbeat data if no products managed yet
-  if (products.length === 0) {
+  // Auto-import from heartbeat data only if never managed before
+  if (products.length === 0 && !isInitialized(machineId)) {
     const machine = machinesDB[machineId];
     const hbProducts = machine?.inventory?.products;
     if (hbProducts && Array.isArray(hbProducts) && hbProducts.length > 0) {
