@@ -277,6 +277,14 @@ function MachineCard({ machine }: { machine: Machine }) {
           </div>
         </div>
       )}
+
+      {/* Detail link */}
+      <a
+        href={`/machines/${machine.id}`}
+        className="mt-4 block w-full rounded-lg bg-brand-600 px-3 py-2 text-center text-xs font-medium text-white transition hover:bg-brand-700"
+      >
+        Voir détails &amp; Produits
+      </a>
     </div>
   );
 }
