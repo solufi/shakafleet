@@ -247,7 +247,8 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
         visibleProducts.map(async (p) => {
           try {
             const imgRes = await fetch(`/api/machines/${machineId}/products/${p.id}/image?v=${Date.now()}`);
-            if (imgRes.ok && imgRes.headers.get("content-type")?.startsWith("image/")) {
+            const ct = imgRes.headers.get("content-type") || "";
+            if (imgRes.ok && ct.startsWith("image/") && !ct.includes("svg")) {
               const blob = await imgRes.blob();
               const base64 = await new Promise<string>((resolve) => {
                 const reader = new FileReader();
