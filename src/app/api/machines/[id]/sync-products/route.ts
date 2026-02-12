@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "../../../../../lib/session";
 import { machinesDB } from "../../../../../lib/machines";
 
+// POST – Admin queues a product sync for the machine
+// The RPi heartbeat will pick it up via GET on next cycle
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -17,12 +19,6 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Machine introuvable" }, { status: 404 });
   }
 
-  // Get machine IP from heartbeat meta
-  const ip = machine.meta?.ip;
-  if (!ip) {
-    return NextResponse.json({ ok: false, error: "IP de la machine inconnue (pas de heartbeat reçu)" }, { status: 400 });
-  }
-
   try {
     const body = await request.json();
     const products = body.products;
@@ -31,40 +27,45 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "products array requis" }, { status: 400 });
     }
 
-    // Push products to RPi local API
-    const vendPort = machine.meta?.vend_port || 5001;
+    // Store pending sync – the RPi heartbeat will pull this
+    machine.pendingSync = {
+      products,
+      queuedAt: new Date().toISOString(),
+      queuedBy: me.email,
+    };
 
-    // The RPi Shaka UI has a /api/local-products endpoint
-    const uiPort = 3000;
-    const url = `http://${ip}:${uiPort}/api/local-products`;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ products }),
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return NextResponse.json(
-        { ok: false, error: `RPi responded ${res.status}: ${text}` },
-        { status: 502 }
-      );
-    }
-
-    const data = await res.json().catch(() => ({}));
-
-    console.log(`[sync-products] Pushed ${products.length} products to ${machineId} (${ip}:${uiPort})`);
+    console.log(`[sync-products] Queued ${products.length} products for ${machineId} (will be pulled by heartbeat)`);
 
     return NextResponse.json({
       ok: true,
-      message: `${products.length} produits synchronisés vers ${machineId}`,
-      rpiResponse: data,
+      message: `${products.length} produits en attente de synchronisation. La machine les récupérera au prochain heartbeat (~30s).`,
     });
   } catch (err) {
     console.error(`[sync-products] Error for ${machineId}:`, err);
-    const msg = err instanceof Error ? err.message : "Erreur de synchronisation";
+    const msg = err instanceof Error ? err.message : "Erreur";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
+}
+
+// GET – RPi heartbeat calls this to check for pending product syncs
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const machineId = params.id;
+  const machine = machinesDB[machineId];
+
+  if (!machine) {
+    return NextResponse.json({ ok: true, pending: false });
+  }
+
+  if (machine.pendingSync) {
+    const sync = machine.pendingSync;
+    // Clear the pending sync once delivered
+    delete machine.pendingSync;
+    console.log(`[sync-products] Delivered ${sync.products.length} products to ${machineId}`);
+    return NextResponse.json({ ok: true, pending: true, products: sync.products, queuedAt: sync.queuedAt });
+  }
+
+  return NextResponse.json({ ok: true, pending: false });
 }

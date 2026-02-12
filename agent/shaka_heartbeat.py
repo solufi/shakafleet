@@ -399,6 +399,40 @@ def send_heartbeat(payload: Dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Product sync (pull from fleet manager)
+# ---------------------------------------------------------------------------
+def check_pending_sync():
+    """Check fleet manager for pending product sync and apply locally."""
+    url = f"{FLEET_URL}/api/machines/{MACHINE_ID}/sync-products"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": f"ShakaAgent/{FIRMWARE_VERSION}"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+
+        if not data.get("pending"):
+            return
+
+        products = data.get("products", [])
+        logger.info(f"Pending sync received: {len(products)} products (queued at {data.get('queuedAt', '?')})")
+
+        # Push to local Shaka UI
+        local_url = "http://127.0.0.1:3000/api/local-products"
+        payload = json.dumps({"products": products}).encode("utf-8")
+        local_req = urllib.request.Request(
+            local_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(local_req, timeout=10) as local_resp:
+            result = json.loads(local_resp.read().decode())
+            logger.info(f"Local sync applied: {result}")
+
+    except Exception as e:
+        logger.debug(f"Sync check: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 def signal_handler(signum, frame):
@@ -435,6 +469,12 @@ def main():
                 if send_count == 1 or send_count % 10 == 0:
                     prox = payload.get("proximity", {})
                     logger.info(f"Heartbeat #{send_count} sent: {MACHINE_ID} status={payload['status']} presence={prox.get('presence_today', 0)} engagement={prox.get('engagement_today', 0)}")
+
+                # Check for pending product sync from fleet manager
+                try:
+                    check_pending_sync()
+                except Exception as e:
+                    logger.debug(f"Sync check error: {e}")
             else:
                 consecutive_failures += 1
                 if consecutive_failures == 1 or consecutive_failures % 10 == 0:
