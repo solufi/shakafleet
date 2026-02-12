@@ -266,9 +266,14 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ products: productsWithImages }),
       });
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        throw new Error(`Serveur a répondu ${res.status} (payload trop gros ?)`);
+      }
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Sync failed");
-      setSyncMsg(`Synchronisé: ${visibleProducts.length} produits envoyés`);
+      const transport = data.transport === "websocket" ? " (WebSocket instant)" : " (en attente ~30s)";
+      setSyncMsg(`Synchronisé: ${visibleProducts.length} produits envoyés${transport}`);
     } catch (e: any) {
       setSyncMsg(`Erreur: ${e.message}`);
     } finally {

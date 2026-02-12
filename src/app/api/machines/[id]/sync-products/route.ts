@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "../../../../../lib/session";
 import { machinesDB } from "../../../../../lib/machines";
 
+// Allow large payloads (base64 images)
+export const maxDuration = 30;
+export const dynamic = "force-dynamic";
+
 // POST – Admin queues a product sync for the machine
 // The RPi heartbeat will pick it up via GET on next cycle
 export async function POST(
