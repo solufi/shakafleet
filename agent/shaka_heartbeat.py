@@ -402,10 +402,11 @@ def send_heartbeat(payload: Dict[str, Any]) -> bool:
 # Product sync (pull from fleet manager)
 # ---------------------------------------------------------------------------
 PRODUCT_IMAGES_DIR = "/home/shaka/Shaka-main/public/images/products"
+PLACEHOLDER_IMAGES_FILE = "/home/shaka/Shaka-main/src/lib/placeholder-images.json"
 
 
 def _save_product_image(image_id: str, data_url: str) -> bool:
-    """Save a base64 data-URL image to the local product images folder."""
+    """Save a base64 data-URL image to the local product images folder and register in placeholder-images.json."""
     try:
         import base64 as b64mod
 
@@ -419,14 +420,51 @@ def _save_product_image(image_id: str, data_url: str) -> bool:
         ext = ext_map.get(mime, ".webp")
 
         os.makedirs(PRODUCT_IMAGES_DIR, exist_ok=True)
-        filepath = os.path.join(PRODUCT_IMAGES_DIR, f"{image_id}{ext}")
+        filename = f"{image_id}{ext}"
+        filepath = os.path.join(PRODUCT_IMAGES_DIR, filename)
         with open(filepath, "wb") as f:
             f.write(b64mod.b64decode(encoded))
         logger.info(f"Saved product image: {filepath} ({len(encoded)//1024}KB)")
+
+        # Register in placeholder-images.json so the agent UI can find it
+        _register_placeholder_image(image_id, f"/images/products/{filename}")
+
         return True
     except Exception as e:
         logger.warning(f"Failed to save image for {image_id}: {e}")
         return False
+
+
+def _register_placeholder_image(image_id: str, image_url: str):
+    """Add or update an entry in placeholder-images.json for the agent UI."""
+    try:
+        data = {"placeholderImages": []}
+        if os.path.exists(PLACEHOLDER_IMAGES_FILE):
+            with open(PLACEHOLDER_IMAGES_FILE, "r") as f:
+                data = json.load(f)
+
+        images = data.get("placeholderImages", [])
+        # Update existing or add new
+        found = False
+        for img in images:
+            if img.get("id") == image_id:
+                img["imageUrl"] = image_url
+                found = True
+                break
+        if not found:
+            images.append({
+                "id": image_id,
+                "description": image_id,
+                "imageUrl": image_url,
+                "imageHint": "product"
+            })
+
+        data["placeholderImages"] = images
+        with open(PLACEHOLDER_IMAGES_FILE, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.debug(f"Registered placeholder image: {image_id} -> {image_url}")
+    except Exception as e:
+        logger.warning(f"Failed to register placeholder image for {image_id}: {e}")
 
 
 def check_pending_sync():
