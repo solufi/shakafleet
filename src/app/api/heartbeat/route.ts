@@ -20,9 +20,11 @@ export async function POST(request: NextRequest) {
       inventory,
       location,
       firmware,
+      agentVersion,
       uptime,
       meta,
       proximity,
+      snapshots,
     } = body;
 
     const forwardedFor = request.headers.get("x-forwarded-for") || undefined;
@@ -41,11 +43,12 @@ export async function POST(request: NextRequest) {
         lastSeen: new Date(),
         uptime: "0j 0h 0m",
         inventory: {},
-        cameraSnapshot: `/api/machines/${machineId}/snapshot`,
         sensors: { temp: 0, humidity: 0, doorOpen: false },
         firmware: "unknown",
+        agentVersion: "unknown",
         location: location || "Inconnue",
         firstSeen: new Date(),
+        snapshots: {},
       };
     }
 
@@ -53,11 +56,16 @@ export async function POST(request: NextRequest) {
     machine.lastSeen = new Date();
     if (status) machine.status = status;
     if (sensors) machine.sensors = { ...machine.sensors, ...sensors };
-    if (inventory) machine.inventory = { ...machine.inventory, ...inventory };
     if (location) machine.location = location;
     if (firmware) machine.firmware = firmware;
+    if (agentVersion) machine.agentVersion = agentVersion;
     if (uptime) machine.uptime = uptime;
     else machine.uptime = computeUptime(machine.firstSeen);
+    if (inventory) machine.inventory = inventory;
+    if (snapshots) {
+      machine.snapshots = snapshots;
+      machine.snapshotsUpdatedAt = new Date().toISOString();
+    }
 
     // Proximity analytics (sent by RPi agent)
     if (proximity) {
@@ -77,11 +85,13 @@ export async function POST(request: NextRequest) {
       receivedAt: new Date().toISOString(),
     };
 
+    const snapCount = snapshots ? Object.keys(snapshots).length : 0;
+    const invCount = inventory?.totalProducts ?? 0;
     console.log(
-      `[heartbeat] ${machineId} – status=${machine.status} sensors=${JSON.stringify(machine.sensors)} proximity=${proximity ? JSON.stringify(proximity) : "-"} source=${JSON.stringify(machine.source)} meta=${meta ? JSON.stringify(meta) : "-"}`
+      `[heartbeat] ${machineId} – status=${machine.status} uptime=${machine.uptime} door=${machine.sensors?.doorOpen ? "OPEN" : "closed"} snaps=${snapCount} inv=${invCount} agent=${agentVersion || "-"}`
     );
 
-    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory, meta, proximity } });
+    return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory: !!inventory, snapshots: snapCount, meta: !!meta, proximity: !!proximity } });
   } catch (err) {
     console.error("[heartbeat] error:", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });

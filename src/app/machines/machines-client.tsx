@@ -5,94 +5,153 @@ import { useEffect, useMemo, useState } from "react";
 type Machine = {
   id: string;
   name?: string;
-  status?: "online" | "offline" | string;
+  status?: "online" | "offline" | "degraded" | string;
   lastSeen?: string | Date;
+  firstSeen?: string | Date;
   uptime?: string;
-  inventory?: Record<string, number>;
-  cameraSnapshot?: string;
+  inventory?: {
+    products?: { name?: string; location?: string; price?: number; quantity?: number }[];
+    inventory?: Record<string, number>;
+    totalProducts?: number;
+  };
+  snapshots?: Record<string, string>;
+  snapshotsUpdatedAt?: string;
   sensors?: { temp?: number; humidity?: number; doorOpen?: boolean };
   firmware?: string;
+  agentVersion?: string;
   location?: string;
   proximity?: {
     summary?: { presence_today?: number; engagement_today?: number; gestures_today?: number; conversion_rate?: number };
     live?: { connected?: boolean; mode?: string; presence?: { detected?: boolean; count?: number }; engagement?: string; distance_mm?: number[]; gesture?: { last?: string } };
     updatedAt?: string;
   };
-  meta?: { services?: Record<string, string>; disk?: { percent?: number; free_gb?: number }; nayax?: { connected?: boolean; simulation?: boolean; state?: string } };
+  meta?: {
+    ip?: string;
+    publicIp?: string;
+    hostname?: string;
+    platform?: string;
+    os?: string;
+    vend_port?: number;
+    services?: Record<string, string>;
+    disk?: { total_gb?: number; used_gb?: number; free_gb?: number; percent?: number };
+    memory?: { total_mb?: number; used_mb?: number; available_mb?: number; percent?: number };
+    nayax?: { connected?: boolean; simulation?: boolean; state?: string };
+  };
+  source?: { forwardedFor?: string; receivedAt?: string };
 };
 
+function StatusBadge({ status }: { status?: string }) {
+  const colors: Record<string, string> = {
+    online: "bg-green-500/20 text-green-400 border-green-500/30",
+    offline: "bg-red-500/20 text-red-400 border-red-500/30",
+    degraded: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  };
+  const labels: Record<string, string> = { online: "En ligne", offline: "Hors ligne", degraded: "Dégradé" };
+  const c = colors[status || "offline"] || colors.offline;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${c}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${status === "online" ? "bg-green-400" : status === "degraded" ? "bg-yellow-400" : "bg-red-400"}`} />
+      {labels[status || "offline"] || status}
+    </span>
+  );
+}
+
+function ServiceDot({ name, status }: { name: string; status: string }) {
+  const ok = status === "active";
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px]" title={`${name}: ${status}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-green-400" : "bg-red-400"}`} />
+      <span className={ok ? "text-slate-400" : "text-red-300"}>{name.replace("shaka-", "")}</span>
+    </span>
+  );
+}
+
 function MachineCard({ machine }: { machine: Machine }) {
-  const isOnline = machine.status === "online";
-  const totalStock = Object.values(machine.inventory || {}).reduce((a: number, b: any) => a + (b as number), 0);
-  const lowStock = Object.entries(machine.inventory || {}).filter(([_, qty]) => (qty as number) < 5);
   const doorOpen = machine.sensors?.doorOpen;
-  const snapshotSrc = machine.cameraSnapshot ? `${machine.cameraSnapshot}?v=${encodeURIComponent(String(machine.lastSeen || Date.now()))}` : null;
+  const meta = machine.meta;
+  const disk = meta?.disk;
+  const mem = meta?.memory;
+  const nayax = meta?.nayax;
+  const services = meta?.services || {};
   const prox = machine.proximity;
   const proxSummary = prox?.summary;
   const proxLive = prox?.live;
+  const inv = machine.inventory;
+  const totalProducts = inv?.totalProducts ?? inv?.products?.length ?? 0;
+  const snapshotSrc = `/api/machines/${machine.id}/snapshot?cam=camera_0&v=${encodeURIComponent(String(machine.lastSeen || Date.now()))}`;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5 transition hover:border-white/20">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">{machine.name}</h2>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400">
             <span className="font-mono">{machine.id}</span>
-            <span>•</span>
-            <span>{machine.location}</span>
+            {machine.location && machine.location !== "Inconnue" && (
+              <><span>•</span><span>{machine.location}</span></>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${isOnline ? "bg-green-400" : "bg-red-400"}`} />
-          <span className={`text-xs font-medium ${isOnline ? "text-green-400" : "text-red-400"}`}>
-            {isOnline ? "En ligne" : "Hors ligne"}
-          </span>
-        </div>
+        <StatusBadge status={machine.status} />
       </div>
 
-      {snapshotSrc ? (
-        <div className="mt-4">
-          <img
-            src={snapshotSrc}
-            alt={`Snapshot ${machine.id}`}
-            className="h-32 w-full rounded-lg object-cover border border-white/10"
-          />
-        </div>
-      ) : (
-        <div className="mt-4 flex h-32 w-full items-center justify-center rounded-lg border border-white/10 bg-slate-800/40 text-sm text-slate-400">
-          Caméra indisponible
-        </div>
-      )}
+      {/* Camera snapshot */}
+      <div className="mt-4">
+        <img
+          src={snapshotSrc}
+          alt={`Snapshot ${machine.id}`}
+          className="h-36 w-full rounded-lg object-cover border border-white/10 bg-slate-800/40"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+        {machine.snapshotsUpdatedAt && (
+          <div className="mt-1 text-[10px] text-slate-500">
+            Dernière capture: {new Date(machine.snapshotsUpdatedAt).toLocaleString("fr-FR")}
+          </div>
+        )}
+      </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+      {/* Key metrics grid */}
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <div>
-          <span className="text-slate-400">Dernière activité</span>
-          <div className="text-white">
+          <span className="text-slate-500">Uptime système</span>
+          <div className="font-medium text-white">{machine.uptime || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-slate-500">Dernière activité</span>
+          <div className="font-medium text-white">
             {machine.lastSeen ? new Date(machine.lastSeen).toLocaleString("fr-FR") : "N/A"}
           </div>
         </div>
         <div>
-          <span className="text-slate-400">Uptime</span>
-          <div className="text-white">{machine.uptime || "N/A"}</div>
+          <span className="text-slate-500">Agent</span>
+          <div className="font-medium text-white font-mono">v{machine.agentVersion || "?"}</div>
         </div>
         <div>
-          <span className="text-slate-400">Stock total</span>
-          <div className="text-white">{totalStock > 0 ? `${totalStock} produits` : "N/A"}</div>
-        </div>
-        <div>
-          <span className="text-slate-400">Firmware</span>
-          <div className="text-white">{machine.firmware || "N/A"}</div>
+          <span className="text-slate-500">Firmware</span>
+          <div className="font-medium text-white font-mono">v{machine.firmware || "?"}</div>
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-slate-800/40 p-3">
-        <div className="text-xs text-white">
-          🌡️ {machine.sensors?.temp ?? "N/A"}°C • 💧 {machine.sensors?.humidity ?? "N/A"}%
+      {/* Network info */}
+      <div className="mt-3 rounded-lg border border-white/5 bg-slate-800/30 p-2.5 text-xs">
+        <div className="mb-1 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Réseau</div>
+        <div className="grid grid-cols-2 gap-1">
+          <div><span className="text-slate-500">IP locale: </span><span className="font-mono text-white">{meta?.ip || "N/A"}</span></div>
+          <div><span className="text-slate-500">IP publique: </span><span className="font-mono text-white">{meta?.publicIp || "N/A"}</span></div>
+          <div><span className="text-slate-500">Hostname: </span><span className="font-mono text-white">{meta?.hostname || "N/A"}</span></div>
+          <div><span className="text-slate-500">Arch: </span><span className="font-mono text-white">{meta?.platform || "N/A"}</span></div>
         </div>
+      </div>
 
+      {/* Door + Temperature */}
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-800/40 p-3">
+        <div className="text-xs text-white">
+          🌡️ {machine.sensors?.temp ?? "N/A"}°C
+        </div>
         <div
           className={
-            "rounded-md px-3 py-1 text-sm font-bold tracking-wide " +
+            "rounded-md px-3 py-1 text-xs font-bold tracking-wide " +
             (doorOpen === true
               ? "bg-red-500/20 text-red-300 border border-red-500/30"
               : doorOpen === false
@@ -100,20 +159,81 @@ function MachineCard({ machine }: { machine: Machine }) {
                 : "bg-slate-700/30 text-slate-200 border border-white/10")
           }
         >
-          {doorOpen === true ? "PORTE OUVERTE" : doorOpen === false ? "PORTE FERMÉE" : "PORTE N/A"}
+          {doorOpen === true ? "🚪 PORTE OUVERTE" : doorOpen === false ? "🔒 PORTE FERMÉE" : "PORTE N/A"}
         </div>
       </div>
 
-      {lowStock.length > 0 && (
-        <div className="mt-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-2 text-xs">
-          <span className="text-yellow-400">⚠️ Stock bas:</span>{" "}
-          {lowStock.map(([product]) => product as string).join(", ")}
+      {/* System resources */}
+      {(disk || mem) && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {disk && (
+            <div className="rounded-lg border border-white/5 bg-slate-800/30 p-2 text-xs">
+              <div className="text-[10px] text-slate-500">Disque</div>
+              <div className="mt-0.5 flex items-end gap-1">
+                <span className={`text-sm font-semibold ${(disk.percent ?? 0) > 85 ? "text-red-400" : (disk.percent ?? 0) > 70 ? "text-yellow-400" : "text-white"}`}>
+                  {disk.percent ?? 0}%
+                </span>
+                <span className="text-slate-500">{disk.used_gb ?? 0}/{disk.total_gb ?? 0} GB</span>
+              </div>
+              <div className="mt-1 h-1 w-full rounded-full bg-slate-700">
+                <div className={`h-1 rounded-full ${(disk.percent ?? 0) > 85 ? "bg-red-500" : (disk.percent ?? 0) > 70 ? "bg-yellow-500" : "bg-green-500"}`} style={{ width: `${Math.min(disk.percent ?? 0, 100)}%` }} />
+              </div>
+            </div>
+          )}
+          {mem && (
+            <div className="rounded-lg border border-white/5 bg-slate-800/30 p-2 text-xs">
+              <div className="text-[10px] text-slate-500">Mémoire</div>
+              <div className="mt-0.5 flex items-end gap-1">
+                <span className={`text-sm font-semibold ${(mem.percent ?? 0) > 85 ? "text-red-400" : (mem.percent ?? 0) > 70 ? "text-yellow-400" : "text-white"}`}>
+                  {mem.percent ?? 0}%
+                </span>
+                <span className="text-slate-500">{mem.used_mb ?? 0}/{mem.total_mb ?? 0} MB</span>
+              </div>
+              <div className="mt-1 h-1 w-full rounded-full bg-slate-700">
+                <div className={`h-1 rounded-full ${(mem.percent ?? 0) > 85 ? "bg-red-500" : (mem.percent ?? 0) > 70 ? "bg-yellow-500" : "bg-green-500"}`} style={{ width: `${Math.min(mem.percent ?? 0, 100)}%` }} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Inventory */}
+      {totalProducts > 0 && (
+        <div className="mt-3 rounded-lg border border-white/5 bg-slate-800/30 p-2.5 text-xs">
+          <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Inventaire — {totalProducts} produits</div>
+          {inv?.products && inv.products.length > 0 && (
+            <div className="mt-1.5 grid gap-0.5 max-h-24 overflow-y-auto">
+              {inv.products.slice(0, 8).map((p: any, i: number) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-slate-300 truncate max-w-[60%]">{p.name || p.location || `Produit ${i + 1}`}</span>
+                  <span className="font-mono text-slate-400">{p.location && <span className="text-slate-600 mr-1">{p.location}</span>}{p.price != null ? `$${(p.price / 100).toFixed(2)}` : ""}</span>
+                </div>
+              ))}
+              {inv.products.length > 8 && (
+                <div className="text-slate-500">+{inv.products.length - 8} autres...</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Nayax payment */}
+      {nayax && (
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          <span className={`h-1.5 w-1.5 rounded-full ${nayax.connected ? "bg-green-400" : "bg-red-400"}`} />
+          <span className="text-slate-400">Nayax:</span>
+          <span className={nayax.connected ? "text-green-300" : "text-red-300"}>
+            {nayax.connected ? "Connecté" : "Déconnecté"}
+          </span>
+          {nayax.simulation && <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] text-yellow-300">SIM</span>}
+          {nayax.state && <span className="text-slate-500">({nayax.state})</span>}
+        </div>
+      )}
+
+      {/* Proximity stats */}
       {proxSummary && (
         <div className="mt-3 rounded-lg border border-white/10 bg-slate-800/40 p-3">
-          <div className="mb-2 text-xs font-medium text-slate-300">Proximité (aujourd&apos;hui)</div>
+          <div className="mb-2 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Proximité (aujourd&apos;hui)</div>
           <div className="grid grid-cols-4 gap-2 text-center">
             <div>
               <div className="text-lg font-semibold text-blue-400">{proxSummary.presence_today ?? 0}</div>
@@ -141,28 +261,22 @@ function MachineCard({ machine }: { machine: Machine }) {
               {proxLive.distance_mm && proxLive.distance_mm[0] > 0 && (
                 <span>• {proxLive.distance_mm[0]}mm</span>
               )}
-              {proxLive.presence?.detected && (
-                <span className="text-blue-400">• Présence détectée</span>
-              )}
-              {proxLive.engagement === "engaged" && (
-                <span className="text-emerald-400">• Engagé</span>
-              )}
             </div>
           )}
         </div>
       )}
 
-      <div className="mt-4 flex gap-2">
-        <button className="flex-1 rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-brand-700">
-          Voir détails
-        </button>
-        <button className="rounded-lg border border-white/20 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10">
-          OTA
-        </button>
-        <button className="rounded-lg border border-white/20 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/10">
-          Reboot
-        </button>
-      </div>
+      {/* Services status */}
+      {Object.keys(services).length > 0 && (
+        <div className="mt-3">
+          <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1">Services</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {Object.entries(services).map(([name, st]) => (
+              <ServiceDot key={name} name={name} status={st} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -194,10 +308,8 @@ export function MachinesClient({ initialMachines }: { initialMachines: Machine[]
     const total = machines.length;
     const online = machines.filter((m) => m.status === "online").length;
     const offline = machines.filter((m) => m.status === "offline").length;
-    const lowStock = machines.filter((m) =>
-      Object.values(m.inventory || {}).some((qty: any) => (qty as number) < 5)
-    ).length;
-    return { total, online, offline, lowStock };
+    const degraded = machines.filter((m) => m.status === "degraded").length;
+    return { total, online, offline, degraded };
   }, [machines]);
 
   const refreshMachines = async () => {
@@ -266,17 +378,17 @@ export function MachinesClient({ initialMachines }: { initialMachines: Machine[]
           <div className="mt-1 text-2xl font-semibold text-red-400">{stats.offline}</div>
         </div>
         <div className="rounded-xl border border-white/10 bg-slate-900/40 p-4">
-          <div className="text-xs text-slate-400">Alertes stock</div>
-          <div className="mt-1 text-2xl font-semibold text-yellow-400">{stats.lowStock}</div>
+          <div className="text-xs text-slate-400">Dégradé</div>
+          <div className="mt-1 text-2xl font-semibold text-yellow-400">{stats.degraded}</div>
         </div>
       </div>
 
       {machines.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-slate-900/40 p-6 text-slate-300">
-          Aucune machine pour le moment. Clique sur "Actualiser" ou attends quelques secondes.
+          Aucune machine pour le moment. Clique sur &quot;Actualiser&quot; ou attends quelques secondes.
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           {machines.map((machine) => (
             <div key={machine.id} className="relative">
               <div className="absolute right-3 top-3 z-10">

@@ -1,21 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Mock snapshot – à remplacer par un vrai fetch vers l’agent
-async function getSnapshotFromAgent(machineId: string): Promise<Buffer | null> {
-  // Exemple : fetch(`http://${machineId}.local/snapshot`) puis Buffer
-  // Ici on retourne une image placeholder SVG en base64
-  const svg = `
-<svg width="640" height="360" xmlns="http://www.w3.org/2000/svg">
-  <rect fill="#1a1a1a" width="640" height="360"/>
-  <text fill="#666" font-family="sans-serif" font-size="24" x="50%" y="50%" text-anchor="middle" dy=".3em">
-    Snapshot ${machineId}
-  </text>
-  <text fill="#444" font-family="sans-serif" font-size="14" x="50%" y="60%" text-anchor="middle" dy=".3em">
-    Caméra indisponible (placeholder)
-  </text>
-</svg>`;
-  return Buffer.from(svg.trim());
-}
+import { machinesDB } from "../../../../../lib/machines";
 
 export async function GET(
   request: NextRequest,
@@ -26,22 +10,33 @@ export async function GET(
     return NextResponse.json({ error: "Machine ID required" }, { status: 400 });
   }
 
-  try {
-    const snapshot = await getSnapshotFromAgent(machineId);
-    if (!snapshot) {
-      return NextResponse.json({ error: "Snapshot not available" }, { status: 404 });
-    }
+  const cameraId = request.nextUrl.searchParams.get("cam") || "camera_0";
+  const machine = machinesDB[machineId];
 
-    // Convert Buffer to Uint8Array for NextResponse
-    const uint8Array = new Uint8Array(snapshot);
-    return new NextResponse(uint8Array, {
+  if (!machine?.snapshots?.[cameraId]) {
+    // Return a placeholder SVG
+    const svg = `<svg width="640" height="360" xmlns="http://www.w3.org/2000/svg">
+  <rect fill="#1a1a2e" width="640" height="360"/>
+  <text fill="#555" font-family="sans-serif" font-size="20" x="50%" y="50%" text-anchor="middle" dy=".3em">
+    Caméra indisponible
+  </text>
+</svg>`;
+    return new NextResponse(svg, {
+      headers: { "Content-Type": "image/svg+xml", "Cache-Control": "no-cache" },
+    });
+  }
+
+  try {
+    const b64 = machine.snapshots[cameraId];
+    const imgBuffer = Buffer.from(b64, "base64");
+    return new NextResponse(new Uint8Array(imgBuffer), {
       headers: {
-        "Content-Type": "image/svg+xml",
+        "Content-Type": "image/jpeg",
         "Cache-Control": "public, max-age=30",
       },
     });
   } catch (err) {
     console.error(`Snapshot error for ${machineId}:`, err);
-    return NextResponse.json({ error: "Failed to fetch snapshot" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to decode snapshot" }, { status: 500 });
   }
 }

@@ -10,6 +10,7 @@ Runs as systemd service: shaka-heartbeat.service
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -42,6 +43,12 @@ MACHINE_LOCATION = os.getenv("MACHINE_LOCATION", "")
 HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
 VEND_SERVER_PORT = int(os.getenv("VEND_SERVER_PORT", "5001"))
 FIRMWARE_VERSION = os.getenv("FIRMWARE_VERSION", "1.0.0")
+AGENT_VERSION = "2.1.0"
+CAMERA_SERVER_PORT = int(os.getenv("CAMERA_SERVER_PORT", "5002"))
+CAMERA_IDS = [int(x) for x in os.getenv("CAMERA_IDS", "0").split(",") if x.strip()]
+SNAPSHOT_INTERVAL = int(os.getenv("SNAPSHOT_INTERVAL", "300"))  # every 5 min
+PRODUCTS_FILE = os.getenv("PRODUCTS_FILE", "/home/shaka/Shaka-main/products.json")
+INVENTORY_FILE = os.getenv("INVENTORY_FILE", "/home/shaka/Shaka-main/inventory.json")
 
 _running = True
 
@@ -92,6 +99,114 @@ def get_local_ip() -> str:
         return ip
     except Exception:
         return "unknown"
+
+
+def get_public_ip() -> str:
+    """Get the public IP address via external service."""
+    for url in ["https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"]:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                ip = resp.read().decode().strip()
+                if ip and len(ip) < 50:
+                    return ip
+        except Exception:
+            continue
+    return "unknown"
+
+
+def get_memory_usage() -> Dict[str, Any]:
+    """Get RAM usage."""
+    try:
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+        info = {}
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2:
+                info[parts[0].rstrip(":")] = int(parts[1])  # kB
+        total = info.get("MemTotal", 0)
+        available = info.get("MemAvailable", 0)
+        used = total - available
+        return {
+            "total_mb": round(total / 1024),
+            "used_mb": round(used / 1024),
+            "available_mb": round(available / 1024),
+            "percent": round(used / total * 100, 1) if total > 0 else 0,
+        }
+    except Exception:
+        return {}
+
+
+def collect_inventory() -> Optional[Dict[str, Any]]:
+    """Collect product inventory from local files."""
+    products: List[Dict[str, Any]] = []
+    inventory: Dict[str, Any] = {}
+
+    # Try products.json
+    try:
+        if os.path.exists(PRODUCTS_FILE):
+            with open(PRODUCTS_FILE, "r") as f:
+                products = json.load(f)
+    except Exception:
+        pass
+
+    # Try inventory.json
+    try:
+        if os.path.exists(INVENTORY_FILE):
+            with open(INVENTORY_FILE, "r") as f:
+                inventory = json.load(f)
+    except Exception:
+        pass
+
+    # Also try the local API
+    if not products:
+        data = _local_get("/local-products")
+        if data and isinstance(data, list):
+            products = data
+
+    if not products and not inventory:
+        return None
+
+    return {
+        "products": products,
+        "inventory": inventory,
+        "totalProducts": len(products),
+    }
+
+
+# Snapshot cache to avoid capturing too frequently
+_last_snapshot_time: float = 0
+_last_snapshot_data: Optional[Dict[str, str]] = None
+
+
+def collect_snapshots() -> Optional[Dict[str, str]]:
+    """Capture camera snapshots as base64 JPEG. Cached per SNAPSHOT_INTERVAL."""
+    global _last_snapshot_time, _last_snapshot_data
+
+    now = time.time()
+    if _last_snapshot_data and (now - _last_snapshot_time) < SNAPSHOT_INTERVAL:
+        return _last_snapshot_data
+
+    snapshots: Dict[str, str] = {}
+    for cam_id in CAMERA_IDS:
+        try:
+            url = f"http://127.0.0.1:{CAMERA_SERVER_PORT}/camera/{cam_id}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                img_data = resp.read()
+                if len(img_data) > 100:  # sanity check
+                    b64 = base64.b64encode(img_data).decode("ascii")
+                    snapshots[f"camera_{cam_id}"] = b64
+        except Exception as e:
+            logger.debug(f"Snapshot camera {cam_id} failed: {e}")
+
+    if snapshots:
+        _last_snapshot_time = now
+        _last_snapshot_data = snapshots
+        return snapshots
+
+    return _last_snapshot_data  # return stale if fresh capture failed
 
 
 def get_disk_usage() -> Dict[str, Any]:
@@ -208,15 +323,18 @@ def build_payload() -> Dict[str, Any]:
         "status": "online" if vend_ok else "degraded",
         "sensors": collect_sensors(),
         "firmware": FIRMWARE_VERSION,
+        "agentVersion": AGENT_VERSION,
         "uptime": get_uptime(),
         "meta": {
             "ip": get_local_ip(),
+            "publicIp": get_public_ip(),
             "hostname": socket.gethostname(),
             "platform": platform.machine(),
             "os": platform.platform(),
             "vend_port": VEND_SERVER_PORT,
             "services": check_services(),
             "disk": get_disk_usage(),
+            "memory": get_memory_usage(),
         },
     }
 
@@ -232,6 +350,16 @@ def build_payload() -> Dict[str, Any]:
     nayax = collect_nayax()
     if nayax:
         payload["meta"]["nayax"] = nayax
+
+    # Inventory
+    inv = collect_inventory()
+    if inv:
+        payload["inventory"] = inv
+
+    # Camera snapshots (base64, every SNAPSHOT_INTERVAL)
+    snaps = collect_snapshots()
+    if snaps:
+        payload["snapshots"] = snaps
 
     return payload
 
