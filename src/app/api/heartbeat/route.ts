@@ -87,8 +87,9 @@ export async function POST(request: NextRequest) {
 
     const snapCount = snapshots ? Object.keys(snapshots).length : 0;
     const invCount = inventory?.totalProducts ?? 0;
+    const nayaxInfo = meta?.nayax ? ` nayax=${meta.nayax.simulation ? "SIM" : meta.nayax.connected && meta.nayax.link?.link_ready ? "LIVE" : meta.nayax.connected ? "conn" : "off"}` : "";
     console.log(
-      `[heartbeat] ${machineId} – status=${machine.status} uptime=${machine.uptime} door=${machine.sensors?.doorOpen ? "OPEN" : "closed"} snaps=${snapCount} inv=${invCount} agent=${agentVersion || "-"}`
+      `[heartbeat] ${machineId} – status=${machine.status} uptime=${machine.uptime} door=${machine.sensors?.doorOpen ? "OPEN" : "closed"} snaps=${snapCount} inv=${invCount} agent=${agentVersion || "-"}${nayaxInfo}`
     );
 
     return NextResponse.json({ ok: true, received: { machineId, status, sensors, inventory: !!inventory, snapshots: snapCount, meta: !!meta, proximity: !!proximity } });

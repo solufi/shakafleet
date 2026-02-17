@@ -287,11 +287,14 @@ def collect_nayax() -> Optional[Dict[str, Any]]:
     """Collect Nayax status."""
     status = _local_get("/nayax/status")
     if status and status.get("ok"):
-        return {
+        result = {
             "connected": status.get("connected", False),
             "simulation": status.get("simulation", True),
             "state": status.get("state", "unknown"),
         }
+        if "link" in status:
+            result["link"] = status["link"]
+        return result
     return None
 
 

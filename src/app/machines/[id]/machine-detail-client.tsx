@@ -40,6 +40,12 @@ type MachineInfo = {
     services?: Record<string, string>;
     disk?: { percent?: number; used_gb?: number; total_gb?: number };
     memory?: { percent?: number; used_mb?: number; total_mb?: number };
+    nayax?: {
+      connected?: boolean;
+      simulation?: boolean;
+      state?: string;
+      link?: { poll_count?: number; link_ready?: boolean; comm_errors?: number; crc_errors?: number };
+    };
   };
 };
 
@@ -320,6 +326,17 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                 </span>
               )}
               {machine?.uptime && <span>Uptime: {machine.uptime}</span>}
+              {machine?.meta?.nayax && (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  machine.meta.nayax.simulation
+                    ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/20"
+                    : machine.meta.nayax.connected && machine.meta.nayax.link?.link_ready
+                      ? "bg-green-500/20 text-green-300 border border-green-500/20"
+                      : "bg-red-500/20 text-red-300 border border-red-500/20"
+                }`}>
+                  Nayax: {machine.meta.nayax.simulation ? "SIM" : machine.meta.nayax.connected && machine.meta.nayax.link?.link_ready ? "LIVE" : "OFF"}
+                </span>
+              )}
             </div>
           </div>
           {isAdmin && (

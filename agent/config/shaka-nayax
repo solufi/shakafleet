@@ -1,0 +1,26 @@
+# Nayax Marshall Protocol Configuration
+# Serial port for Nayax VPOS Touch (USB-RS232 adapter)
+NAYAX_SERIAL_PORT=/dev/ttyUSB0
+NAYAX_BAUD_RATE=115200
+
+# Simulation mode: 1=enabled (no real device), 0=disabled (real device)
+NAYAX_SIMULATION=0
+
+# Decimal places for price (Canada=2, meaning 100 = .00)
+NAYAX_DECIMAL_PLACES=2
+
+# Vend result timeout in seconds
+NAYAX_VEND_RESULT_TIMEOUT=30
+
+# State file (shared with vend server)
+NAYAX_STATE_FILE=/tmp/shaka_nayax_state.json
+
+# Reconnect interval in seconds
+NAYAX_RECONNECT_INTERVAL=5
+
+# Heartbeat interval in seconds
+NAYAX_HEARTBEAT_INTERVAL=10
+
+# Simulation settings
+NAYAX_SIM_APPROVAL_DELAY=3.0
+NAYAX_SIM_AUTO_APPROVE=1

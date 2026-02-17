@@ -1,0 +1,22 @@
+# Shaka Heartbeat Service Configuration
+
+# Fleet Manager URL
+FLEET_URL=https://fleet.shakadistribution.ca
+
+# Heartbeat API endpoint
+HEARTBEAT_ENDPOINT=/api/heartbeat
+
+# Machine identifier (unique per machine)
+MACHINE_ID=Shaka-PS
+
+# Machine location (optional, human-readable)
+MACHINE_LOCATION=PublicStorage-MTL
+
+# Heartbeat interval in seconds
+HEARTBEAT_INTERVAL=30
+
+# Local vend server port
+VEND_SERVER_PORT=5001
+
+# Firmware version
+FIRMWARE_VERSION=1.0.0

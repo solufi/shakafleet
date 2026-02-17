@@ -5,13 +5,20 @@ Nayax Marshall Protocol - Python wrapper
 Communication layer for Nayax VPOS Touch via RS232 (USB adapter).
 Supports Multi-Vending with Pre-Selection flow.
 
-When the real Nayax SDK (C) is available, this module can be replaced
-by a ctypes/cffi wrapper around the .so library.  Until then it runs
-in SIMULATION mode so the rest of the stack can be developed and tested.
-
 Protocol: Marshall over RS232
 Baud: 115200 8N1 (Nayax default)
 Device: /dev/ttyUSB0 (USB-RS232 adapter)
+
+Packet format (reverse-engineered):
+  LEN(1) SEQ(3) DATA(4) FLAGS(1) CRC16-LE(2) = 11 bytes
+  CRC: CRC-16/XMODEM (poly=0x1021, init=0x0000) in little-endian
+
+Nayax polls VMC every ~1s with flags=0x01, data=0xFFFFFFFF (idle).
+VMC responds with matching seq, flags=0x00, data=0x00000000 (idle ACK).
+
+Vend flow over serial:
+  VMC sets response data field to encode vend commands.
+  Nayax changes its poll data/flags to signal session events.
 """
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ import enum
 import json
 import logging
 import os
+import struct
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -35,6 +43,7 @@ SIMULATION = os.getenv("NAYAX_SIMULATION", "1") == "1"
 DECIMAL_PLACES = int(os.getenv("NAYAX_DECIMAL_PLACES", "2"))  # Canada = 2
 VEND_RESULT_TIMEOUT = int(os.getenv("NAYAX_VEND_RESULT_TIMEOUT", "30"))
 STATE_FILE = os.getenv("NAYAX_STATE_FILE", "/tmp/shaka_nayax_state.json")
+POLL_TIMEOUT = float(os.getenv("NAYAX_POLL_TIMEOUT", "5.0"))  # seconds without poll = comm error
 
 
 # ---------------------------------------------------------------------------
@@ -121,18 +130,77 @@ class VendSession:
 
 
 # ---------------------------------------------------------------------------
+# CRC-16/XMODEM helper
+# ---------------------------------------------------------------------------
+def _crc16_xmodem(data: bytes) -> int:
+    """Compute CRC-16/XMODEM (poly=0x1021, init=0x0000)."""
+    crc = 0x0000
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = (crc << 1) ^ 0x1021
+            else:
+                crc <<= 1
+            crc &= 0xFFFF
+    return crc
+
+
+def _make_packet(seq_bytes: bytes, data: bytes, flags: int) -> bytes:
+    """Build an 11-byte Marshall packet: LEN(1) SEQ(3) DATA(4) FLAGS(1) CRC16-LE(2)."""
+    payload = b'\x09' + seq_bytes + data + bytes([flags])
+    crc = _crc16_xmodem(payload)
+    return payload + struct.pack('<H', crc)
+
+
+def _parse_packet(raw: bytes):
+    """Parse an 11-byte packet. Returns (seq_bytes, data, flags, crc_ok) or None."""
+    if len(raw) < 11 or raw[0] != 0x09:
+        return None
+    payload = raw[:9]
+    recv_crc = struct.unpack('<H', raw[9:11])[0]
+    calc_crc = _crc16_xmodem(payload)
+    return raw[1:4], raw[4:8], raw[8], recv_crc == calc_crc
+
+
+# ---------------------------------------------------------------------------
+# Marshall Protocol Constants
+# ---------------------------------------------------------------------------
+# Nayax poll flags
+NAYAX_FLAG_POLL       = 0x01  # Standard idle poll from Nayax
+NAYAX_FLAG_SESSION    = 0x02  # Session-related event from Nayax
+NAYAX_FLAG_APPROVED   = 0x03  # Vend approved
+NAYAX_FLAG_DENIED     = 0x04  # Vend denied
+NAYAX_FLAG_TXN_INFO   = 0x05  # Transaction info
+NAYAX_FLAG_SETTLED    = 0x06  # Settlement complete
+NAYAX_FLAG_CANCELLED  = 0x07  # Session cancelled by device
+
+# VMC response flags
+VMC_FLAG_ACK          = 0x00  # Idle ACK
+VMC_FLAG_VEND_REQ     = 0x10  # Vend request
+VMC_FLAG_VEND_OK      = 0x11  # Vend success
+VMC_FLAG_VEND_FAIL    = 0x12  # Vend failure
+VMC_FLAG_CANCEL       = 0x13  # Cancel session
+VMC_FLAG_SESSION_DONE = 0x14  # Session complete
+
+# Idle data patterns
+NAYAX_IDLE_DATA = b'\xff\xff\xff\xff'
+VMC_IDLE_DATA   = b'\x00\x00\x00\x00'
+
+
+# ---------------------------------------------------------------------------
 # Marshall Protocol Handler
 # ---------------------------------------------------------------------------
 class MarshallProtocol:
     """
     Handles communication with Nayax VPOS Touch over RS232.
     
+    In LIVE mode, a background thread reads Nayax poll packets and
+    responds with ACK or vend commands. The Nayax device drives the
+    poll cycle (~1 packet/second).
+    
     In SIMULATION mode, all serial I/O is mocked and transactions
     are auto-approved after a configurable delay.
-    
-    When the real SDK arrives:
-      - Replace _serial_connect / _serial_send / _serial_recv
-      - Or use ctypes to call the C SDK .so directly
     """
 
     def __init__(self, port: str = SERIAL_PORT, baud: int = BAUD_RATE,
@@ -157,6 +225,18 @@ class MarshallProtocol:
         self._sim_approval_delay = float(os.getenv("NAYAX_SIM_APPROVAL_DELAY", "3.0"))
         self._sim_auto_approve = os.getenv("NAYAX_SIM_AUTO_APPROVE", "1") == "1"
 
+        # Serial protocol state
+        self._poll_thread: Optional[threading.Thread] = None
+        self._poll_running = False
+        self._last_poll_time = 0.0
+        self._poll_count = 0
+        self._resp_data = VMC_IDLE_DATA   # data field for next response
+        self._resp_flags = VMC_FLAG_ACK   # flags for next response
+        self._resp_lock = threading.Lock()
+        self._link_ready = False
+        self._comm_errors = 0
+        self._crc_errors = 0
+
     # -- Connection ---------------------------------------------------------
     def connect(self) -> bool:
         """Connect to the Nayax device via RS232."""
@@ -174,12 +254,34 @@ class MarshallProtocol:
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
-                timeout=1.0,
+                timeout=0.5,
             )
             self._connected = True
-            self._set_state(NayaxState.IDLE)
-            logger.info(f"[NAYAX] Connected to {self.port} @ {self.baud}")
-            return True
+            logger.info(f"[NAYAX] Serial port opened: {self.port} @ {self.baud}")
+
+            # Start background poll responder
+            self._poll_running = True
+            self._poll_thread = threading.Thread(
+                target=self._poll_responder_loop, daemon=True, name="nayax-poll"
+            )
+            self._poll_thread.start()
+            logger.info("[NAYAX] Poll responder thread started")
+
+            # Wait for first poll to confirm link
+            deadline = time.time() + POLL_TIMEOUT
+            while time.time() < deadline and not self._link_ready:
+                time.sleep(0.1)
+
+            if self._link_ready:
+                self._set_state(NayaxState.IDLE)
+                logger.info("[NAYAX] Link established - receiving polls from Nayax device")
+                return True
+            else:
+                logger.warning("[NAYAX] No polls received within timeout - device may not be ready")
+                # Still mark as connected, polls may come later
+                self._set_state(NayaxState.IDLE)
+                return True
+
         except Exception as e:
             logger.error(f"[NAYAX] Connection failed: {e}")
             self._set_state(NayaxState.ERROR)
@@ -187,12 +289,18 @@ class MarshallProtocol:
 
     def disconnect(self):
         """Disconnect from the Nayax device."""
+        self._poll_running = False
+        if self._poll_thread:
+            self._poll_thread.join(timeout=3.0)
+            self._poll_thread = None
         if self._serial and not self.simulation:
             try:
                 self._serial.close()
             except Exception:
                 pass
+        self._serial = None
         self._connected = False
+        self._link_ready = False
         self._set_state(NayaxState.DISCONNECTED)
         logger.info("[NAYAX] Disconnected")
 
@@ -243,6 +351,13 @@ class MarshallProtocol:
                 "session": self._current_session.to_dict() if self._current_session else None,
                 "timestamp": time.time(),
             }
+            if not self.simulation:
+                data["link"] = {
+                    "poll_count": self._poll_count,
+                    "link_ready": self._link_ready,
+                    "comm_errors": self._comm_errors,
+                    "crc_errors": self._crc_errors,
+                }
             with open(STATE_FILE, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
@@ -334,12 +449,178 @@ class MarshallProtocol:
 
     def get_state_snapshot(self) -> Dict[str, Any]:
         """Get current state as dict (for API responses)."""
-        return {
+        snapshot = {
             "connected": self._connected,
             "simulation": self.simulation,
             "state": self._state.value,
             "session": self._current_session.to_dict() if self._current_session else None,
         }
+        if not self.simulation:
+            snapshot["link"] = self.get_link_stats()
+        return snapshot
+
+    def get_link_stats(self) -> Dict[str, Any]:
+        """Get serial link statistics."""
+        return {
+            "poll_count": self._poll_count,
+            "link_ready": self._link_ready,
+            "comm_errors": self._comm_errors,
+            "crc_errors": self._crc_errors,
+            "last_poll_age": round(time.time() - self._last_poll_time, 1) if self._last_poll_time else None,
+        }
+
+    # -- Serial poll responder (background thread) --------------------------
+    def _poll_responder_loop(self):
+        """Background thread: read Nayax polls, send responses."""
+        buf = b''
+        logger.info("[NAYAX] Poll responder running")
+
+        while self._poll_running:
+            try:
+                if not self._serial or not self._serial.is_open:
+                    time.sleep(0.5)
+                    continue
+
+                # Read available bytes
+                chunk = self._serial.read(64)
+                if not chunk:
+                    # Check for comm timeout
+                    if (self._last_poll_time > 0 and
+                            time.time() - self._last_poll_time > POLL_TIMEOUT):
+                        if self._link_ready:
+                            self._link_ready = False
+                            self._comm_errors += 1
+                            logger.warning("[NAYAX] Communication timeout - no polls received")
+                            self._emit("on_error", "Communication timeout")
+                    continue
+
+                buf += chunk
+
+                # Process complete 11-byte packets
+                while len(buf) >= 11:
+                    # Find packet start (0x09)
+                    idx = buf.find(b'\x09')
+                    if idx == -1:
+                        buf = b''
+                        break
+                    if idx > 0:
+                        buf = buf[idx:]
+                    if len(buf) < 11:
+                        break
+
+                    raw = buf[:11]
+                    buf = buf[11:]
+
+                    parsed = _parse_packet(raw)
+                    if parsed is None:
+                        continue
+
+                    seq_bytes, data, flags, crc_ok = parsed
+
+                    if not crc_ok:
+                        self._crc_errors += 1
+                        logger.debug("[NAYAX] CRC error on received packet")
+                        continue
+
+                    self._last_poll_time = time.time()
+                    self._poll_count += 1
+
+                    if not self._link_ready:
+                        self._link_ready = True
+                        logger.info("[NAYAX] First poll received - link is UP")
+
+                    # Process the Nayax packet
+                    self._handle_nayax_packet(seq_bytes, data, flags)
+
+                    # Build and send response
+                    with self._resp_lock:
+                        resp_data = self._resp_data
+                        resp_flags = self._resp_flags
+
+                    resp = _make_packet(seq_bytes, resp_data, resp_flags)
+                    self._serial.write(resp)
+                    self._serial.flush()
+
+                    # After sending a non-idle response, reset to idle for next poll
+                    if resp_flags != VMC_FLAG_ACK:
+                        with self._resp_lock:
+                            self._resp_data = VMC_IDLE_DATA
+                            self._resp_flags = VMC_FLAG_ACK
+
+            except Exception as e:
+                logger.error(f"[NAYAX] Poll responder error: {e}")
+                self._comm_errors += 1
+                time.sleep(1.0)
+
+        logger.info("[NAYAX] Poll responder stopped")
+
+    def _handle_nayax_packet(self, seq_bytes: bytes, data: bytes, flags: int):
+        """Process an incoming Nayax packet and update state accordingly."""
+        if flags == NAYAX_FLAG_POLL and data == NAYAX_IDLE_DATA:
+            # Standard idle poll - nothing to do
+            return
+
+        # Non-idle packet from Nayax
+        logger.info(f"[NAYAX] RX event: flags=0x{flags:02x} data={data.hex()}")
+
+        session = self._current_session
+
+        if flags == NAYAX_FLAG_SESSION:
+            # Session begin - Nayax detected a card or is ready
+            if session and self._state == NayaxState.WAITING_PAYMENT:
+                self._set_state(NayaxState.AUTHORIZING)
+                logger.info("[NAYAX] Card detected - authorizing...")
+
+        elif flags == NAYAX_FLAG_TXN_INFO:
+            # Transaction info from Nayax
+            if session:
+                # Extract transaction data from the 4-byte data field
+                txn_id = int.from_bytes(data, 'big')
+                session.transaction_id = f"NX-{txn_id}"
+                logger.info(f"[NAYAX] Transaction info: txn_id={session.transaction_id}")
+                self._emit("on_transaction_info", session)
+
+        elif flags == NAYAX_FLAG_APPROVED:
+            # Vend approved by Nayax
+            if session:
+                session.payment_result = PaymentResult.APPROVED.value
+                self._set_state(NayaxState.VEND_APPROVED)
+                self._emit("on_vend_approved", session)
+                logger.info(f"[NAYAX] Vend APPROVED: session={session.session_id}")
+
+        elif flags == NAYAX_FLAG_DENIED:
+            # Vend denied
+            if session:
+                session.payment_result = PaymentResult.DENIED.value
+                session.error = "Payment denied by Nayax"
+                self._set_state(NayaxState.ERROR)
+                self._emit("on_vend_denied", session)
+                logger.warning(f"[NAYAX] Vend DENIED: session={session.session_id}")
+
+        elif flags == NAYAX_FLAG_SETTLED:
+            # Settlement complete
+            if session:
+                self._set_state(NayaxState.SESSION_COMPLETE)
+                self._emit("on_session_complete", session)
+                logger.info(f"[NAYAX] Settlement complete: session={session.session_id}")
+
+        elif flags == NAYAX_FLAG_CANCELLED:
+            # Session cancelled by device
+            if session:
+                session.payment_result = PaymentResult.CANCELLED.value
+                session.error = "Cancelled by Nayax device"
+                self._set_state(NayaxState.SESSION_COMPLETE)
+                self._emit("on_session_complete", session)
+                logger.info(f"[NAYAX] Session cancelled by device")
+
+        else:
+            logger.debug(f"[NAYAX] Unknown flags=0x{flags:02x} data={data.hex()}")
+
+    def _set_response(self, data: bytes, flags: int):
+        """Set the data/flags for the next poll response."""
+        with self._resp_lock:
+            self._resp_data = data
+            self._resp_flags = flags
 
     # -- Simulation ---------------------------------------------------------
     def _sim_authorize(self, session: VendSession):
@@ -366,30 +647,38 @@ class MarshallProtocol:
             self._emit("on_vend_denied", session)
             logger.info("[NAYAX-SIM] Vend DENIED (sim_auto_approve=0)")
 
-    # -- Real serial (placeholder for SDK integration) ----------------------
+    # -- Real serial vend commands ------------------------------------------
     def _send_vend_request(self, session: VendSession):
         """
         Send vend request to Nayax device via Marshall protocol.
-        
-        TODO: Replace with actual SDK calls when available:
-          C SDK:  vmc_vend_vend_request(vend_session_t *session)
-          
-        The SDK handles the low-level serial framing (STX/ETX/checksum).
+        Encodes total price in the 4-byte data field with VEND_REQ flag.
         """
-        logger.warning("[NAYAX] _send_vend_request: NOT IMPLEMENTED - need Nayax C SDK")
-        # Placeholder: when SDK .so is available, use ctypes:
-        #   from ctypes import cdll, Structure, c_ushort, c_ubyte, POINTER
-        #   lib = cdll.LoadLibrary("/home/shaka/nayax_sdk/libmarshall.so")
-        #   ...
+        price = min(session.total_price, 0xFFFF)
+        # Data: 2 bytes price (big-endian) + 2 bytes item count
+        data = struct.pack('>HH', price, len(session.items))
+        self._set_response(data, VMC_FLAG_VEND_REQ)
+        logger.info(f"[NAYAX] Vend request queued: price={price} items={len(session.items)}")
 
     def _send_vend_status(self, session: VendSession, success: bool):
         """
         Report vend result to Nayax device.
-        
-        TODO: Replace with actual SDK calls:
-          C SDK:  vmc_vend_vend_status(&session, success ? __true : __false)
         """
-        logger.warning("[NAYAX] _send_vend_status: NOT IMPLEMENTED - need Nayax C SDK")
+        flag = VMC_FLAG_VEND_OK if success else VMC_FLAG_VEND_FAIL
+        price = min(session.total_price, 0xFFFF)
+        data = struct.pack('>HH', price, len(session.items))
+        self._set_response(data, flag)
+        logger.info(f"[NAYAX] Vend status queued: success={success}")
+
+        if success:
+            # Also queue session complete
+            def _complete_after_settle():
+                time.sleep(2.0)  # Wait for Nayax to settle
+                self._set_response(VMC_IDLE_DATA, VMC_FLAG_SESSION_DONE)
+                time.sleep(1.0)
+                if self._current_session:
+                    self._set_state(NayaxState.SESSION_COMPLETE)
+                    self._emit("on_session_complete", self._current_session)
+            threading.Thread(target=_complete_after_settle, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------

@@ -35,7 +35,7 @@ type Machine = {
     services?: Record<string, string>;
     disk?: { total_gb?: number; used_gb?: number; free_gb?: number; percent?: number };
     memory?: { total_mb?: number; used_mb?: number; available_mb?: number; percent?: number };
-    nayax?: { connected?: boolean; simulation?: boolean; state?: string };
+    nayax?: { connected?: boolean; simulation?: boolean; state?: string; link?: { poll_count?: number; link_ready?: boolean; comm_errors?: number; crc_errors?: number } };
   };
   source?: { forwardedFor?: string; receivedAt?: string };
 };
@@ -217,16 +217,44 @@ function MachineCard({ machine }: { machine: Machine }) {
         </div>
       )}
 
-      {/* Nayax payment */}
+      {/* Nayax payment terminal */}
       {nayax && (
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <span className={`h-1.5 w-1.5 rounded-full ${nayax.connected ? "bg-green-400" : "bg-red-400"}`} />
-          <span className="text-slate-400">Nayax:</span>
-          <span className={nayax.connected ? "text-green-300" : "text-red-300"}>
-            {nayax.connected ? "Connecté" : "Déconnecté"}
-          </span>
-          {nayax.simulation && <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] text-yellow-300">SIM</span>}
-          {nayax.state && <span className="text-slate-500">({nayax.state})</span>}
+        <div className="mt-3 rounded-lg border border-white/5 bg-slate-800/30 p-2.5 text-xs">
+          <div className="mb-1.5 flex items-center justify-between">
+            <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Paiement Nayax</div>
+            {nayax.simulation ? (
+              <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-medium text-yellow-300 border border-yellow-500/20">SIMULATION</span>
+            ) : nayax.connected && nayax.link?.link_ready ? (
+              <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-medium text-green-300 border border-green-500/20">LIVE</span>
+            ) : (
+              <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300 border border-red-500/20">HORS LIGNE</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${nayax.connected && nayax.link?.link_ready ? "bg-green-400 animate-pulse" : nayax.connected ? "bg-yellow-400" : "bg-red-400"}`} />
+            <span className={nayax.connected ? "text-white" : "text-red-300"}>
+              {nayax.connected && nayax.link?.link_ready ? "Détecté & Connecté" : nayax.connected ? "Connecté (pas de lien)" : "Non détecté"}
+            </span>
+          </div>
+          {nayax.state && nayax.state !== "idle" && (
+            <div className="mt-1 text-slate-400">État: <span className="text-white">{nayax.state}</span></div>
+          )}
+          {nayax.link && !nayax.simulation && (
+            <div className="mt-1.5 grid grid-cols-3 gap-1 text-center rounded bg-slate-900/40 p-1.5">
+              <div>
+                <div className="text-[10px] text-slate-500">Polls</div>
+                <div className="font-mono text-white">{nayax.link.poll_count?.toLocaleString() ?? 0}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500">CRC Err</div>
+                <div className={`font-mono ${(nayax.link.crc_errors ?? 0) > 0 ? "text-red-400" : "text-white"}`}>{nayax.link.crc_errors ?? 0}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500">Comm Err</div>
+                <div className={`font-mono ${(nayax.link.comm_errors ?? 0) > 0 ? "text-red-400" : "text-white"}`}>{nayax.link.comm_errors ?? 0}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

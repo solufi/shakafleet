@@ -340,8 +340,19 @@ def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[s
         return {"ok": False, "error": str(e)}
 
 
+NAYAX_STATE_FILE = "/tmp/shaka_nayax_state.json"
+
 def nayax_get_status() -> Dict[str, Any]:
-    """Get current Nayax payment state."""
+    """Get current Nayax payment state from the nayax service state file."""
+    try:
+        if os.path.exists(NAYAX_STATE_FILE):
+            with open(NAYAX_STATE_FILE, "r") as f:
+                snapshot = json.load(f)
+            snapshot["ok"] = True
+            return snapshot
+    except Exception:
+        pass
+    # Fallback to in-process instance
     nayax = get_nayax()
     snapshot = nayax.get_state_snapshot()
     snapshot["ok"] = True
