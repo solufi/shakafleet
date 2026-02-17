@@ -8,3 +8,6 @@ yarn-error.log*
 
 # local deploy files are still kept in repo, but not needed in image context
 /deploy
+
+# RPi agent files (not part of the Fleet Manager build)
+/agent
