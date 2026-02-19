@@ -26,6 +26,7 @@ export default async function MachineDetailPage({ params }: { params: { id: stri
           <nav className="flex items-center gap-4 text-sm text-slate-300">
             <Link className="hover:text-white" href="/">Dashboard</Link>
             <Link className="hover:text-white" href="/machines">Machines</Link>
+            <Link className="hover:text-white" href="/products">Produits</Link>
             <Link className="hover:text-white" href="/analytics">Analytics</Link>
             <Link className="hover:text-white" href="/users">Users</Link>
           </nav>

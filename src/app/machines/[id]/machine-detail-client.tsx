@@ -24,6 +24,20 @@ type Product = {
   nutrition?: Nutrition;
 };
 
+type CatalogProduct = {
+  id: string;
+  sku: string;
+  name: string;
+  brand: string;
+  category: string;
+  description: string;
+  price: number;
+  cost: number;
+  imageId: string;
+  warehouseStock: number;
+  active: boolean;
+};
+
 type MachineInfo = {
   id: string;
   name?: string;
@@ -82,6 +96,12 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
   const [formImageFile, setFormImageFile] = useState<File | null>(null);
   const [formImagePreview, setFormImagePreview] = useState<string | null>(null);
 
+  // Catalog picker state
+  const [showCatalogPicker, setShowCatalogPicker] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
+
   const apiBase = `/api/machines/${machineId}/products`;
 
   const fetchData = async () => {
@@ -120,6 +140,43 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setFormError(null);
     setFormImageFile(null);
     setFormImagePreview(null);
+  };
+
+  const openCatalogPicker = async () => {
+    setShowCatalogPicker(true);
+    setCatalogSearch("");
+    setCatalogLoading(true);
+    try {
+      const res = await fetch(`/api/products?activeOnly=true&v=${Date.now()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setCatalogProducts(data.products || []);
+      }
+    } catch {} finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const addFromCatalog = (cp: CatalogProduct) => {
+    const maxOrder = products.reduce((max, p) => Math.max(max, p.order || 0), -1) + 1;
+    setForm({
+      name: cp.name,
+      price: cp.price,
+      quantity: 0,
+      imageId: cp.imageId || "",
+      description: cp.description || "",
+      location: "",
+      order: maxOrder,
+      useRelay: false,
+      visible: true,
+      nutrition: undefined,
+    });
+    setCreating(true);
+    setEditing(null);
+    setFormError(null);
+    setFormImageFile(null);
+    setFormImagePreview(cp.id ? `/api/products/${cp.id}/image?v=${Date.now()}` : null);
+    setShowCatalogPicker(false);
   };
 
   const openEdit = (product: Product) => {
@@ -351,6 +408,13 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
               </button>
               <button
                 type="button"
+                onClick={openCatalogPicker}
+                className="rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-2 text-sm font-medium text-brand-300 transition hover:bg-brand-500/20"
+              >
+                + Depuis le catalogue
+              </button>
+              <button
+                type="button"
                 onClick={openCreate}
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
               >
@@ -365,6 +429,70 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
           </div>
         )}
       </div>
+
+      {/* Catalog picker modal */}
+      {showCatalogPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[80vh] rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white">Ajouter depuis le catalogue</h3>
+              <button type="button" onClick={() => setShowCatalogPicker(false)}
+                className="rounded-md border border-white/10 px-3 py-1 text-sm text-white hover:bg-white/10">Fermer</button>
+            </div>
+            <input
+              type="text"
+              placeholder="Rechercher un produit..."
+              value={catalogSearch}
+              onChange={(e) => setCatalogSearch(e.target.value)}
+              className="mb-3 h-9 w-full rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500 placeholder:text-slate-500"
+            />
+            <div className="flex-1 overflow-y-auto">
+              {catalogLoading ? (
+                <div className="text-sm text-slate-400 text-center py-8">Chargement...</div>
+              ) : catalogProducts.filter((cp) => {
+                if (!catalogSearch) return true;
+                const q = catalogSearch.toLowerCase();
+                return cp.name.toLowerCase().includes(q) || cp.sku.toLowerCase().includes(q) || cp.brand.toLowerCase().includes(q);
+              }).length === 0 ? (
+                <div className="text-sm text-slate-400 text-center py-8">Aucun produit dans le catalogue.</div>
+              ) : (
+                <div className="grid gap-2">
+                  {catalogProducts
+                    .filter((cp) => {
+                      if (!catalogSearch) return true;
+                      const q = catalogSearch.toLowerCase();
+                      return cp.name.toLowerCase().includes(q) || cp.sku.toLowerCase().includes(q) || cp.brand.toLowerCase().includes(q);
+                    })
+                    .map((cp) => (
+                      <button
+                        key={cp.id}
+                        type="button"
+                        onClick={() => addFromCatalog(cp)}
+                        className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-800/40 p-3 text-left transition hover:border-white/20 hover:bg-slate-800/60"
+                      >
+                        <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-slate-700/40 overflow-hidden">
+                          <img src={`/api/products/${cp.id}/image?v=1`} alt={cp.name}
+                            className="h-full w-full object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-white text-sm truncate">{cp.name}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {cp.sku} {cp.brand && `• ${cp.brand}`} {cp.category && `• ${cp.category}`}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-semibold text-green-400">${cp.price.toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-500">Entrepôt: {cp.warehouseStock}</div>
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>

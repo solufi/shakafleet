@@ -30,6 +30,9 @@ export default function HomePage() {
             <Link className="hover:text-white" href="/machines">
               Machines
             </Link>
+            <Link className="hover:text-white" href="/products">
+              Produits
+            </Link>
             <Link className="hover:text-white" href="/agents">
               Agents
             </Link>
@@ -71,6 +74,17 @@ export default function HomePage() {
             <div className="text-lg font-medium">Machines</div>
             <div className="mt-1 text-sm text-slate-300">
               Inventaire, statut, snapshots, dernière activité.
+            </div>
+            <div className="mt-4 text-sm text-brand-500 group-hover:text-brand-400">Open →</div>
+          </Link>
+
+          <Link
+            href="/products"
+            className="group rounded-2xl border border-white/10 bg-slate-900/40 p-5 shadow-sm hover:border-white/20"
+          >
+            <div className="text-lg font-medium">Produits</div>
+            <div className="mt-1 text-sm text-slate-300">
+              Catalogue, inventaire entrepôt, stock par machine.
             </div>
             <div className="mt-4 text-sm text-brand-500 group-hover:text-brand-400">Open →</div>
           </Link>
