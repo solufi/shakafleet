@@ -12,7 +12,7 @@ export async function GET(
     return new NextResponse(null, { status: 404 });
   }
   const mime = img.ext === "png" ? "image/png" : img.ext === "webp" ? "image/webp" : "image/jpeg";
-  return new NextResponse(img.data, {
+  return new NextResponse(new Uint8Array(img.data), {
     headers: { "Content-Type": mime, "Cache-Control": "public, max-age=3600" },
   });
 }
