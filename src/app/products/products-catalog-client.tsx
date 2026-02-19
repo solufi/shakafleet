@@ -15,6 +15,7 @@ type CatalogProduct = {
   name: string;
   brand: string;
   category: string;
+  supplier: string;
   description: string;
   price: number;
   cost: number;
@@ -31,6 +32,7 @@ const emptyForm: Omit<CatalogProduct, "id" | "createdAt" | "updatedAt"> = {
   name: "",
   brand: "",
   category: "",
+  supplier: "",
   description: "",
   price: 0,
   cost: 0,
@@ -43,11 +45,13 @@ const emptyForm: Omit<CatalogProduct, "id" | "createdAt" | "updatedAt"> = {
 export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterSupplier, setFilterSupplier] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
 
@@ -74,6 +78,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
       const data = await res.json();
       setProducts(data.products || []);
       setCategories(data.categories || []);
+      setSuppliers(data.suppliers || []);
     } catch (e: any) {
       setError(e.message || "Erreur");
     } finally {
@@ -86,6 +91,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
   // Filtered products
   const filtered = products.filter((p) => {
     if (filterCategory && p.category !== filterCategory) return false;
+    if (filterSupplier && p.supplier !== filterSupplier) return false;
     if (filterActive === "active" && !p.active) return false;
     if (filterActive === "inactive" && p.active) return false;
     if (filterSearch) {
@@ -94,6 +100,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q) ||
+        (p.supplier || "").toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q)
       );
     }
@@ -122,6 +129,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
       name: product.name,
       brand: product.brand,
       category: product.category,
+      supplier: product.supplier || "",
       description: product.description,
       price: product.price,
       cost: product.cost,
@@ -322,6 +330,16 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </select>
         <select
+          value={filterSupplier}
+          onChange={(e) => setFilterSupplier(e.target.value)}
+          className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
+        >
+          <option value="">Tous fournisseurs</option>
+          {suppliers.map((sup) => (
+            <option key={sup} value={sup}>{sup}</option>
+          ))}
+        </select>
+        <select
           value={filterActive}
           onChange={(e) => setFilterActive(e.target.value as any)}
           className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
@@ -419,6 +437,16 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
                 placeholder="Boisson, Snack, Prot\u00e9ine..." />
               <datalist id="categories-list">
                 {categories.map((cat) => <option key={cat} value={cat} />)}
+              </datalist>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-slate-400">Fournisseur</label>
+              <input value={form.supplier} onChange={(e) => updateField("supplier", e.target.value)}
+                list="suppliers-list"
+                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
+                placeholder="Distribution ABC, Costco..." />
+              <datalist id="suppliers-list">
+                {suppliers.map((sup) => <option key={sup} value={sup} />)}
               </datalist>
             </div>
             <div className="grid gap-1">
@@ -544,6 +572,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Produit</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">SKU</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Cat&eacute;gorie</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Fournisseur</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Prix</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Co&ucirc;t</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Marge</th>
@@ -587,6 +616,9 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
                       ) : (
                         <span className="text-slate-600">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-300">
+                      {product.supplier || <span className="text-slate-600">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-green-400">${product.price.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right text-slate-400">${product.cost.toFixed(2)}</td>

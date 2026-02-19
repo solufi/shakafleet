@@ -7,6 +7,7 @@ import {
   deleteCatalogProduct,
   adjustWarehouseStock,
   getCategories,
+  getSuppliers,
 } from "../../../lib/catalog";
 
 // GET /api/products?category=xxx&activeOnly=true
@@ -19,8 +20,9 @@ export async function GET(request: NextRequest) {
 
   const products = listCatalog({ activeOnly, category });
   const categories = getCategories();
+  const suppliers = getSuppliers();
 
-  return NextResponse.json({ ok: true, products, categories });
+  return NextResponse.json({ ok: true, products, categories, suppliers });
 }
 
 // POST /api/products – create a new catalog product
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, product });
     }
 
-    const { sku, name, brand, category, description, price, cost, imageId, nutrition, warehouseStock, active } = body;
+    const { sku, name, brand, category, supplier, description, price, cost, imageId, nutrition, warehouseStock, active } = body;
 
     if (!name || !sku) {
       return NextResponse.json({ ok: false, error: "Nom et SKU requis" }, { status: 400 });
@@ -49,6 +51,7 @@ export async function POST(request: NextRequest) {
       name,
       brand: brand || "",
       category: category || "",
+      supplier: supplier || "",
       description: description || "",
       price: Number(price || 0),
       cost: Number(cost || 0),

@@ -17,6 +17,7 @@ export interface CatalogProduct {
   name: string;
   brand: string;
   category: string;       // ex: "Boisson", "Snack", "Protéine"
+  supplier: string;       // fournisseur (ex: "Distribution ABC", "Costco")
   description: string;
   price: number;           // prix de vente suggéré
   cost: number;            // prix coûtant
@@ -156,6 +157,11 @@ export function adjustWarehouseStock(id: string, delta: number): CatalogProduct 
 export function getCategories(): string[] {
   const cats = new Set(getAll().map((p) => p.category).filter(Boolean));
   return Array.from(cats).sort();
+}
+
+export function getSuppliers(): string[] {
+  const sups = new Set(getAll().map((p) => p.supplier).filter(Boolean));
+  return Array.from(sups).sort();
 }
 
 // ---------------------------------------------------------------------------

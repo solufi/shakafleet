@@ -31,6 +31,7 @@ type CatalogProduct = {
   name: string;
   brand: string;
   category: string;
+  supplier: string;
   description: string;
   price: number;
   cost: number;
@@ -482,7 +483,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-white text-sm truncate">{cp.name}</div>
                           <div className="text-[10px] text-slate-400">
-                            {cp.sku} {cp.brand && `• ${cp.brand}`} {cp.category && `• ${cp.category}`}
+                            {cp.sku} {cp.brand && `• ${cp.brand}`} {cp.category && `• ${cp.category}`} {cp.supplier && `• ${cp.supplier}`}
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
