@@ -369,7 +369,7 @@ export function SuppliersClient({ isAdmin }: { isAdmin: boolean }) {
                 ← Liste
               </button>
             )}
-            {isAdmin && !selectedSupplier && (
+            {!selectedSupplier && (
               <button type="button" onClick={openCreate}
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700">
                 + Nouveau fournisseur
@@ -441,14 +441,12 @@ export function SuppliersClient({ isAdmin }: { isAdmin: boolean }) {
                   {selectedSupplier.notes && <div className="mt-2 text-xs text-slate-500">{selectedSupplier.notes}</div>}
                 </div>
               </div>
-              {isAdmin && (
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => openEdit(selectedSupplier)}
-                    className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/10">Modifier</button>
-                  <button type="button" onClick={openAddProduct}
-                    className="rounded-md bg-brand-600 px-3 py-1.5 text-xs text-white hover:bg-brand-700">+ Ajouter un produit</button>
-                </div>
-              )}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => openEdit(selectedSupplier)}
+                  className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/10">Modifier</button>
+                <button type="button" onClick={openAddProduct}
+                  className="rounded-md bg-brand-600 px-3 py-1.5 text-xs text-white hover:bg-brand-700">+ Ajouter un produit</button>
+              </div>
             </div>
           </div>
 
@@ -482,19 +480,17 @@ export function SuppliersClient({ isAdmin }: { isAdmin: boolean }) {
                             </div>
                           )}
                         </div>
-                        {isAdmin && (
-                          <div className="flex gap-1">
-                            <button type="button"
-                              onClick={() => { setCostUpdate({ product, supplierId: selectedSupplier.id }); setNewCost(product.currentCost); setCostNote(""); }}
-                              className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10">
-                              Maj prix
-                            </button>
-                            <button type="button" onClick={() => handleRemoveProduct(product.catalogProductId)}
-                              className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10">
-                              &#10005;
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex gap-1">
+                          <button type="button"
+                            onClick={() => { setCostUpdate({ product, supplierId: selectedSupplier.id }); setNewCost(product.currentCost); setCostNote(""); }}
+                            className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10">
+                            Maj prix
+                          </button>
+                          <button type="button" onClick={() => handleRemoveProduct(product.catalogProductId)}
+                            className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10">
+                            &#10005;
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -590,11 +586,9 @@ export function SuppliersClient({ isAdmin }: { isAdmin: boolean }) {
           {suppliers.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-slate-900/40 p-8 text-center text-slate-400">
               Aucun fournisseur.
-              {isAdmin && (
-                <div className="mt-2">
-                  <button type="button" onClick={openCreate} className="text-brand-400 hover:text-brand-300">+ Ajouter un fournisseur</button>
-                </div>
-              )}
+              <div className="mt-2">
+                <button type="button" onClick={openCreate} className="text-brand-400 hover:text-brand-300">+ Ajouter un fournisseur</button>
+              </div>
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -702,7 +696,7 @@ export function SuppliersClient({ isAdmin }: { isAdmin: boolean }) {
               </button>
               <button type="button" onClick={() => setShowForm(false)}
                 className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/10">Annuler</button>
-              {editingSupplier && isAdmin && (
+              {editingSupplier && (
                 <button type="button" onClick={() => { setShowForm(false); handleDelete(editingSupplier); }}
                   className="rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10">Supprimer</button>
               )}

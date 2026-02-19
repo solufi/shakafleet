@@ -46,6 +46,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +80,14 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
       setProducts(data.products || []);
       setCategories(data.categories || []);
       setSuppliers(data.suppliers || []);
+      // Also fetch full suppliers list from /api/suppliers
+      try {
+        const sRes = await fetch(`/api/suppliers?v=${Date.now()}`, { cache: "no-store" });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          setSuppliersList((sData.suppliers || []).filter((s: any) => s.active).map((s: any) => ({ id: s.id, name: s.name })));
+        }
+      } catch {}
     } catch (e: any) {
       setError(e.message || "Erreur");
     } finally {
@@ -441,13 +450,13 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-slate-400">Fournisseur</label>
-              <input value={form.supplier} onChange={(e) => updateField("supplier", e.target.value)}
-                list="suppliers-list"
-                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
-                placeholder="Distribution ABC, Costco..." />
-              <datalist id="suppliers-list">
-                {suppliers.map((sup) => <option key={sup} value={sup} />)}
-              </datalist>
+              <select value={form.supplier} onChange={(e) => updateField("supplier", e.target.value)}
+                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500">
+                <option value="">— S&eacute;lectionner un fournisseur —</option>
+                {suppliersList.map((sup) => (
+                  <option key={sup.id} value={sup.name}>{sup.name}</option>
+                ))}
+              </select>
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-slate-400">Prix de vente ($)</label>
