@@ -1,16 +1,18 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getSession } from "../../../lib/session";
-import { MachineDetailClient } from "./machine-detail-client";
+import { SalesAnalyticsClient } from "./sales-analytics-client";
 
-export default async function MachineDetailPage({ params }: { params: { id: string } }) {
+export default function SalesPage() {
   const jar = cookies();
   const session = jar.get("shaka_admin")?.value;
   if (!session) redirect("/login");
 
-  const me = await getSession();
-  if (!me) redirect("/login");
+  let isAdmin = false;
+  try {
+    const parsed = JSON.parse(session);
+    isAdmin = parsed.role === "admin";
+  } catch {}
 
   return (
     <div className="min-h-screen">
@@ -20,22 +22,27 @@ export default async function MachineDetailPage({ params }: { params: { id: stri
             <img src="/logo.png" alt="Shaka Distribution" className="h-9 w-auto" />
             <div className="leading-tight">
               <div className="text-sm text-slate-300">Shaka</div>
-              <div className="text-lg font-semibold tracking-tight">Machine</div>
+              <div className="text-lg font-semibold tracking-tight">Fleet Manager</div>
             </div>
           </div>
-          <nav className="flex items-center gap-4 text-sm text-slate-300">
+          <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
             <Link className="hover:text-white" href="/">Dashboard</Link>
             <Link className="hover:text-white" href="/machines">Machines</Link>
             <Link className="hover:text-white" href="/products">Produits</Link>
-            <Link className="hover:text-white" href="/sales">Ventes</Link>
+            <Link className="text-white font-medium" href="/sales">Ventes</Link>
             <Link className="hover:text-white" href="/analytics">Analytics</Link>
             <Link className="hover:text-white" href="/users">Users</Link>
           </nav>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 hover:bg-white/10">
+              Logout
+            </button>
+          </form>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <MachineDetailClient machineId={params.id} isAdmin={me.role === "admin"} />
+        <SalesAnalyticsClient isAdmin={isAdmin} />
       </main>
     </div>
   );

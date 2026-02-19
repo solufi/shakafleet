@@ -39,6 +39,9 @@ export default async function MachinesPage() {
             <Link className="hover:text-white" href="/products">
               Produits
             </Link>
+            <Link className="hover:text-white" href="/sales">
+              Ventes
+            </Link>
             <Link className="hover:text-white" href="/agents">
               Agents
             </Link>

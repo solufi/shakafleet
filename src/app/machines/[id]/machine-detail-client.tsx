@@ -14,6 +14,7 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  cost?: number;
   quantity: number;
   imageId: string;
   description: string;
@@ -66,6 +67,7 @@ type MachineInfo = {
 const emptyProduct: Omit<Product, "id"> = {
   name: "",
   price: 0,
+  cost: 0,
   quantity: 0,
   imageId: "",
   description: "",
@@ -162,6 +164,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setForm({
       name: cp.name,
       price: cp.price,
+      cost: cp.cost || 0,
       quantity: 0,
       imageId: cp.imageId || "",
       description: cp.description || "",
@@ -183,6 +186,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     setForm({
       name: product.name,
       price: product.price,
+      cost: product.cost ?? 0,
       quantity: product.quantity,
       imageId: product.imageId,
       description: product.description,
@@ -516,6 +520,14 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                 className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500" />
             </div>
             <div className="grid gap-1">
+              <label className="text-xs text-slate-400">Prix coûtant ($)</label>
+              <input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => updateField("cost", parseFloat(e.target.value) || 0)}
+                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500" />
+              {form.price > 0 && (form.cost ?? 0) > 0 && (
+                <span className="text-[10px] text-slate-500">Marge: {((form.price - (form.cost ?? 0)) / form.price * 100).toFixed(0)}%</span>
+              )}
+            </div>
+            <div className="grid gap-1">
               <label className="text-xs text-slate-400">Quantité</label>
               <input type="number" value={form.quantity} onChange={(e) => updateField("quantity", parseInt(e.target.value) || 0)}
                 className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500" />
@@ -714,18 +726,30 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+              <div className="grid grid-cols-4 gap-2 text-xs mb-3">
                 <div>
                   <span className="text-slate-500">Prix</span>
                   <div className="font-semibold text-green-400">${product.price.toFixed(2)}</div>
                 </div>
                 <div>
+                  <span className="text-slate-500">Coût</span>
+                  <div className="font-semibold text-slate-300">{product.cost ? `$${product.cost.toFixed(2)}` : "—"}</div>
+                </div>
+                <div>
+                  <span className="text-slate-500">Marge</span>
+                  <div className={`font-semibold ${product.cost && product.price > 0 ? ((product.price - product.cost) / product.price * 100) >= 30 ? "text-green-400" : "text-orange-400" : "text-slate-500"}`}>
+                    {product.cost && product.price > 0 ? `${((product.price - product.cost) / product.price * 100).toFixed(0)}%` : "—"}
+                  </div>
+                </div>
+                <div>
                   <span className="text-slate-500">Qté</span>
                   <div className="font-semibold text-white">{product.quantity}</div>
                 </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 text-xs mb-3">
                 <div>
                   <span className="text-slate-500">Position</span>
-                  <div className="font-mono font-semibold text-white">{product.location || "—"}</div>
+                  <span className="ml-2 font-mono font-semibold text-white">{product.location || "—"}</span>
                 </div>
               </div>
 

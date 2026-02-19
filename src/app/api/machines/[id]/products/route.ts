@@ -56,7 +56,7 @@ export async function POST(
     }
 
     // Create mode
-    const { name, price, quantity, description, location, imageId, order, useRelay, visible, nutrition } = body;
+    const { name, price, cost, quantity, description, location, imageId, order, useRelay, visible, nutrition } = body;
 
     if (!name || price == null) {
       return NextResponse.json({ ok: false, error: "Nom et prix requis" }, { status: 400 });
@@ -65,6 +65,7 @@ export async function POST(
     const product = createProduct(machineId, {
       name,
       price: Number(price),
+      cost: cost != null ? Number(cost) : undefined,
       quantity: Number(quantity ?? 0),
       description: description || "",
       location: location || "",
@@ -105,6 +106,7 @@ export async function PATCH(
 
     // Convert numeric fields
     if (updates.price != null) updates.price = Number(updates.price);
+    if (updates.cost != null) updates.cost = Number(updates.cost);
     if (updates.quantity != null) updates.quantity = Number(updates.quantity);
     if (updates.order != null) updates.order = Number(updates.order);
 
