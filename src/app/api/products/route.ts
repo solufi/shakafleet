@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const me = await getSession();
   if (!me) return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
-  if (me.role !== "admin") return NextResponse.json({ ok: false, error: "Accès refusé" }, { status: 403 });
 
   try {
     const body = await request.json();
@@ -74,7 +73,6 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const me = await getSession();
   if (!me) return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
-  if (me.role !== "admin") return NextResponse.json({ ok: false, error: "Accès refusé" }, { status: 403 });
 
   try {
     const body = await request.json();
@@ -102,7 +100,6 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const me = await getSession();
   if (!me) return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
-  if (me.role !== "admin") return NextResponse.json({ ok: false, error: "Accès refusé" }, { status: 403 });
 
   const id = request.nextUrl.searchParams.get("id");
   if (!id) {

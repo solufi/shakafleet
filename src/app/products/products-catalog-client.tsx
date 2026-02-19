@@ -47,6 +47,8 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
   const [categories, setCategories] = useState<string[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -277,15 +279,13 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
               Tous les produits disponibles pour les machines Shaka.
             </p>
           </div>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
-            >
-              + Nouveau produit
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+          >
+            + Nouveau produit
+          </button>
         </div>
       </div>
 
@@ -440,13 +440,38 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-slate-400">Cat&eacute;gorie</label>
-              <input value={form.category} onChange={(e) => updateField("category", e.target.value)}
-                list="categories-list"
-                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
-                placeholder="Boisson, Snack, Prot\u00e9ine..." />
-              <datalist id="categories-list">
-                {categories.map((cat) => <option key={cat} value={cat} />)}
-              </datalist>
+              {showNewCategory ? (
+                <div className="flex gap-2">
+                  <input value={newCategory} onChange={(e) => setNewCategory(e.target.value)}
+                    className="h-10 flex-1 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500"
+                    placeholder="Nom de la nouvelle cat&eacute;gorie..." autoFocus />
+                  <button type="button" onClick={() => {
+                    if (newCategory.trim()) {
+                      updateField("category", newCategory.trim());
+                      if (!categories.includes(newCategory.trim())) {
+                        setCategories((prev) => [...prev, newCategory.trim()].sort());
+                      }
+                    }
+                    setShowNewCategory(false);
+                    setNewCategory("");
+                  }} className="rounded-lg bg-brand-600 px-3 text-xs text-white hover:bg-brand-700">OK</button>
+                  <button type="button" onClick={() => { setShowNewCategory(false); setNewCategory(""); }}
+                    className="rounded-lg border border-white/10 px-3 text-xs text-white hover:bg-white/10">&#10005;</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <select value={form.category} onChange={(e) => updateField("category", e.target.value)}
+                    className="h-10 flex-1 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500">
+                    <option value="">— S&eacute;lectionner —</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => setShowNewCategory(true)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white hover:bg-white/10 whitespace-nowrap"
+                    title="Cr&eacute;er une nouvelle cat&eacute;gorie">+ Nouvelle</button>
+                </div>
+              )}
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-slate-400">Fournisseur</label>
@@ -565,7 +590,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-slate-900/40 p-8 text-center text-slate-400">
           {products.length === 0 ? "Aucun produit dans le catalogue." : "Aucun produit ne correspond aux filtres."}
-          {isAdmin && products.length === 0 && (
+          {products.length === 0 && (
             <div className="mt-2">
               <button type="button" onClick={openCreate} className="text-brand-400 hover:text-brand-300">
                 + Ajouter un produit
@@ -587,7 +612,7 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Marge</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Entrep&ocirc;t</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-slate-400">Statut</th>
-                {isAdmin && <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Actions</th>}
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -652,25 +677,23 @@ export function ProductsCatalogClient({ isAdmin }: { isAdmin: boolean }) {
                         {product.active ? "Actif" : "Inactif"}
                       </span>
                     </td>
-                    {isAdmin && (
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <button type="button" onClick={() => openEdit(product)}
-                            className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10">
-                            Modifier
-                          </button>
-                          <button type="button" onClick={() => handleToggleActive(product)}
-                            className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10"
-                            title={product.active ? "D\u00e9sactiver" : "Activer"}>
-                            {product.active ? "Off" : "On"}
-                          </button>
-                          <button type="button" onClick={() => handleDelete(product)}
-                            className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10">
-                            &#10005;
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button type="button" onClick={() => openEdit(product)}
+                          className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10">
+                          Modifier
+                        </button>
+                        <button type="button" onClick={() => handleToggleActive(product)}
+                          className="rounded-md border border-white/10 px-2 py-1 text-xs text-white hover:bg-white/10"
+                          title={product.active ? "D\u00e9sactiver" : "Activer"}>
+                          {product.active ? "Off" : "On"}
+                        </button>
+                        <button type="button" onClick={() => handleDelete(product)}
+                          className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10">
+                          &#10005;
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

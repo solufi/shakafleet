@@ -24,7 +24,6 @@ export async function POST(
 ) {
   const me = await getSession();
   if (!me) return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
-  if (me.role !== "admin") return NextResponse.json({ ok: false, error: "Accès refusé" }, { status: 403 });
 
   const product = getCatalogProduct(params.id);
   if (!product) return NextResponse.json({ ok: false, error: "Produit introuvable" }, { status: 404 });
