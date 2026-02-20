@@ -485,19 +485,19 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
       </div>
 
       {/* Tabs */}
-      {isAdmin && (
-        <div className="mb-6 flex gap-1 rounded-xl border border-white/10 bg-slate-900/40 p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("products")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              activeTab === "products"
-                ? "bg-brand-600 text-white shadow"
-                : "text-slate-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            Produits ({products.length})
-          </button>
+      <div className="mb-6 flex gap-1 rounded-xl border border-white/10 bg-slate-900/40 p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab("products")}
+          className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            activeTab === "products"
+              ? "bg-brand-600 text-white shadow"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          Produits ({products.length})
+        </button>
+        {isAdmin && (
           <button
             type="button"
             onClick={() => setActiveTab("stripe")}
@@ -509,8 +509,8 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
           >
             Configuration Stripe
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Catalog picker modal */}
       {showCatalogPicker && (
