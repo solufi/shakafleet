@@ -55,8 +55,8 @@ SCRIPTS=(
     "shaka_validation2.py"
     "rpi_vend_server_stdlib.py"
     "rpi_vend_server.py"
-    "nayax_marshall.py"
-    "shaka_nayax_service.py"
+    "stripe_terminal.py"
+    "shaka_payment_service.py"
     "gpio_init.py"
     "shaka-kiosk.sh"
     "shaka_proximity.py"
@@ -90,9 +90,9 @@ if [[ -f "${SCRIPT_DIR}/config/shaka-vend.env" ]]; then
     log "  -> /etc/default/shaka-vend"
 fi
 
-if [[ -f "${SCRIPT_DIR}/config/shaka-nayax.env" ]]; then
-    cp "${SCRIPT_DIR}/config/shaka-nayax.env" /etc/default/shaka-nayax
-    log "  -> /etc/default/shaka-nayax"
+if [[ -f "${SCRIPT_DIR}/config/shaka-stripe.env" ]]; then
+    cp "${SCRIPT_DIR}/config/shaka-stripe.env" /etc/default/shaka-stripe
+    log "  -> /etc/default/shaka-stripe"
 fi
 
 if [[ -f "${SCRIPT_DIR}/config/shaka-proximity.env" ]]; then
@@ -110,7 +110,7 @@ log "Installing systemd services..."
 SERVICES=(
     "shaka-gpio-init.service"
     "shaka-vend.service"
-    "shaka-nayax.service"
+    "shaka-payment.service"
     "shaka-proximity.service"
     "shaka-heartbeat.service"
     "shaka-camera.service"
@@ -134,7 +134,7 @@ systemctl daemon-reload
 # Core services (always enable)
 systemctl enable shaka-gpio-init.service
 systemctl enable shaka-vend.service
-systemctl enable shaka-nayax.service
+systemctl enable shaka-payment.service
 systemctl enable shaka-proximity.service 2>/dev/null || true
 systemctl enable shaka-heartbeat.service
 
@@ -147,7 +147,7 @@ systemctl enable shaka-ui.service 2>/dev/null || true
 log "Starting core services..."
 systemctl start shaka-gpio-init.service || warn "GPIO init failed (may need reboot)"
 systemctl start shaka-vend.service
-systemctl start shaka-nayax.service
+systemctl start shaka-payment.service
 systemctl start shaka-proximity.service || warn "Proximity sensor not found (check USB)"
 systemctl start shaka-heartbeat.service
 
@@ -158,30 +158,30 @@ echo -e "${GREEN}  Shaka Agent installed successfully!${NC}"
 echo "============================================="
 echo ""
 echo "Services:"
-systemctl --no-pager status shaka-vend.service shaka-nayax.service shaka-proximity.service shaka-heartbeat.service 2>/dev/null | grep -E "Active:|\u25cf" || true
+systemctl --no-pager status shaka-vend.service shaka-payment.service shaka-proximity.service shaka-heartbeat.service 2>/dev/null | grep -E "Active:|\u25cf" || true
 echo ""
 echo "Config files:"
 echo "  /etc/default/shaka-vend"
-echo "  /etc/default/shaka-nayax"
+echo "  /etc/default/shaka-stripe"
 echo "  /etc/default/shaka-proximity"
 echo "  /etc/default/shaka-heartbeat"
 echo ""
 echo "Test:"
 echo "  curl http://localhost:5001/health"
-echo "  curl http://localhost:5001/nayax/status"
+echo "  curl http://localhost:5001/stripe/status"
 echo "  curl http://localhost:5001/proximity/status"
 echo "  curl http://localhost:5001/proximity/stats/today"
 echo ""
 echo "Logs:"
 echo "  journalctl -u shaka-vend -f"
-echo "  journalctl -u shaka-nayax -f"
+echo "  journalctl -u shaka-payment -f"
 echo "  journalctl -u shaka-proximity -f"
 echo "  journalctl -u shaka-heartbeat -f"
 echo ""
 echo "Next steps:"
 echo "  1. Edit /etc/default/shaka-vend (ACTIVE_LOW, etc.)"
-echo "  2. Edit /etc/default/shaka-nayax (NAYAX_SIMULATION=0 when device ready)"
+echo "  2. Edit /etc/default/shaka-stripe (STRIPE_SIMULATION=0 when device ready)"
 echo "  2b. Edit /etc/default/shaka-heartbeat (MACHINE_ID, FLEET_URL)"
 echo "  3. Install Shaka-main UI in ${SHAKA_HOME}/Shaka-main/"
-echo "  4. sudo systemctl restart shaka-vend shaka-nayax"
+echo "  4. sudo systemctl restart shaka-vend shaka-payment"
 echo ""
