@@ -265,7 +265,7 @@ export function SalesAnalyticsClient({ isAdmin }: { isAdmin: boolean }) {
 
   // Payment method colors
   const paymentColors: Record<string, string> = {
-    card: "#3b82f6", nayax: "#8b5cf6", cash: "#22c55e", free: "#f59e0b", other: "#6b7280",
+    card: "#3b82f6", stripe: "#8b5cf6", cash: "#22c55e", free: "#f59e0b", other: "#6b7280",
   };
 
   // Aggregate payment data from all summaries
@@ -531,7 +531,7 @@ export function SalesAnalyticsClient({ isAdmin }: { isAdmin: boolean }) {
                     <td className="px-4 py-2 text-center">
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                         s.paymentMethod === "card" ? "bg-blue-500/20 text-blue-400" :
-                        s.paymentMethod === "nayax" ? "bg-purple-500/20 text-purple-400" :
+                        s.paymentMethod === "stripe" ? "bg-purple-500/20 text-purple-400" :
                         s.paymentMethod === "cash" ? "bg-green-500/20 text-green-400" :
                         "bg-slate-500/20 text-slate-400"
                       }`}>
@@ -595,7 +595,7 @@ export function SalesAnalyticsClient({ isAdmin }: { isAdmin: boolean }) {
                   onChange={(e) => setSaleForm((f) => ({ ...f, paymentMethod: e.target.value }))}
                   className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-brand-500">
                   <option value="card">Carte</option>
-                  <option value="nayax">Nayax</option>
+                  <option value="stripe">Stripe</option>
                   <option value="cash">Cash</option>
                   <option value="free">Gratuit</option>
                   <option value="other">Autre</option>

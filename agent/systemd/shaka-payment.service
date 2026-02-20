@@ -1,13 +1,13 @@
 [Unit]
-Description=Shaka Nayax Payment Service (Marshall Protocol)
+Description=Shaka Payment Service (Stripe Terminal)
 After=network.target shaka-vend.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/home/shaka
-EnvironmentFile=/etc/default/shaka-nayax
-ExecStart=/usr/bin/python3 /home/shaka/shaka_nayax_service.py
+EnvironmentFile=/etc/default/shaka-stripe
+ExecStart=/usr/bin/python3 /home/shaka/shaka_payment_service.py
 Restart=always
 RestartSec=3
 

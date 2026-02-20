@@ -14,7 +14,7 @@ export interface Sale {
   cost: number;         // prix coûtant
   profit: number;       // price - cost
   quantity: number;
-  paymentMethod: "cash" | "card" | "nayax" | "free" | "other";
+  paymentMethod: "cash" | "card" | "stripe" | "free" | "other";
   timestamp: string;    // ISO 8601
   date: string;         // YYYY-MM-DD (for grouping)
 }

@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nayax_spark import get_nayax, VendItem, VendSession, NayaxState, PaymentResult
+from stripe_terminal import get_terminal, VendItem, VendSession, TerminalState, PaymentResult
 from proximity_logger import init_db as init_proximity_db, get_today_stats, get_daily_stats, get_weekly_stats, get_recent_events, get_summary_for_heartbeat
 
 
@@ -305,16 +305,16 @@ def check_door_status() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Nayax Spark Payment Integration
+# Stripe Terminal Payment Integration
 # ---------------------------------------------------------------------------
 
-def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[str, Any]:
-    """Start a Nayax payment session with multi-vend support."""
-    nayax = get_nayax()
+def stripe_start_payment(items_data: list, machine_id: str = "default") -> Dict[str, Any]:
+    """Start a Stripe Terminal payment session with multi-vend support."""
+    terminal = get_terminal()
     
-    if not nayax.connected:
-        if not nayax.connect():
-            return {"ok": False, "error": "Cannot connect to Nayax device"}
+    if not terminal.connected:
+        if not terminal.connect():
+            return {"ok": False, "error": "Cannot connect to Stripe Terminal"}
     
     try:
         items = []
@@ -322,6 +322,7 @@ def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[s
             items.append(VendItem(
                 code=int(item.get("code", 0)),
                 price=int(item.get("price", 0)),
+                name=str(item.get("name", "")),
                 unit=int(item.get("unit", 1)),
                 qty=int(item.get("qty", 1)),
             ))
@@ -329,7 +330,7 @@ def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[s
         if not items:
             return {"ok": False, "error": "No items provided"}
         
-        session = nayax.vend_request(items)
+        session = terminal.start_payment(items)
         return {
             "ok": True,
             "message": "Payment session started",
@@ -340,54 +341,118 @@ def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[s
         return {"ok": False, "error": str(e)}
 
 
-NAYAX_STATE_FILE = "/tmp/shaka_nayax_state.json"
-
-def nayax_get_status() -> Dict[str, Any]:
-    """Get current Nayax payment state from the nayax service state file."""
+def stripe_add_item(item_data: dict) -> Dict[str, Any]:
+    """Add an item to the current session (multi-vend)."""
+    terminal = get_terminal()
     try:
-        if os.path.exists(NAYAX_STATE_FILE):
-            with open(NAYAX_STATE_FILE, "r") as f:
+        item = VendItem(
+            code=int(item_data.get("code", 0)),
+            price=int(item_data.get("price", 0)),
+            name=str(item_data.get("name", "")),
+            unit=int(item_data.get("unit", 1)),
+            qty=int(item_data.get("qty", 1)),
+        )
+        session = terminal.add_item_to_session(item)
+        return {
+            "ok": True,
+            "message": "Item added to session",
+            "session": session.to_dict(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+STRIPE_STATE_FILE = "/tmp/shaka_stripe_state.json"
+
+def stripe_get_status() -> Dict[str, Any]:
+    """Get current Stripe Terminal payment state."""
+    try:
+        if os.path.exists(STRIPE_STATE_FILE):
+            with open(STRIPE_STATE_FILE, "r") as f:
                 snapshot = json.load(f)
             snapshot["ok"] = True
             return snapshot
     except Exception:
         pass
     # Fallback to in-process instance
-    nayax = get_nayax()
-    snapshot = nayax.get_state_snapshot()
+    terminal = get_terminal()
+    snapshot = terminal.get_state_snapshot()
     snapshot["ok"] = True
     return snapshot
 
 
-def nayax_vend_result(success: bool) -> Dict[str, Any]:
-    """Report vend result (success/failure) to Nayax after dispensing."""
-    nayax = get_nayax()
+def stripe_vend_result(success: bool) -> Dict[str, Any]:
+    """Report vend result (success/failure) → capture or cancel payment."""
+    terminal = get_terminal()
     try:
         if success:
-            nayax.vend_success()
+            terminal.vend_success()
         else:
-            nayax.vend_failure()
+            terminal.vend_failure()
         return {"ok": True, "message": "Vend result reported", "success": success}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def nayax_cancel() -> Dict[str, Any]:
-    """Cancel current Nayax session."""
-    nayax = get_nayax()
+def stripe_cancel() -> Dict[str, Any]:
+    """Cancel current Stripe Terminal session."""
+    terminal = get_terminal()
     try:
-        nayax.cancel_session()
+        terminal.cancel_session()
         return {"ok": True, "message": "Session cancelled"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def nayax_reset() -> Dict[str, Any]:
-    """Reset Nayax to idle state."""
-    nayax = get_nayax()
+def stripe_reset() -> Dict[str, Any]:
+    """Reset Stripe Terminal to idle state."""
+    terminal = get_terminal()
     try:
-        nayax.reset()
+        terminal.reset()
         return {"ok": True, "message": "Reset to idle"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def stripe_apply_config(data: dict) -> Dict[str, Any]:
+    """Apply Stripe config pushed from Fleet Manager. Writes /etc/default/shaka-stripe."""
+    env_content = data.get("envContent", "")
+    config = data.get("config", {})
+
+    if not env_content and not config:
+        return {"ok": False, "error": "No config provided"}
+
+    env_path = "/etc/default/shaka-stripe"
+    try:
+        # Build env content from config if not provided as raw text
+        if not env_content and config:
+            lines = [
+                "# Stripe Terminal Configuration",
+                "# Pushed from Fleet Manager",
+                f"# Updated: {time.strftime('%Y-%m-%dT%H:%M:%S')}",
+                "",
+                f"STRIPE_SECRET_KEY={config.get('secretKey', '')}",
+                f"STRIPE_READER_ID={config.get('readerId', '')}",
+                f"MACHINE_ID={config.get('machineId', os.getenv('MACHINE_ID', 'default'))}",
+                f"STRIPE_SIMULATION={'1' if config.get('simulation', True) else '0'}",
+                f"STRIPE_DECIMAL_PLACES={config.get('decimalPlaces', 2)}",
+                f"STRIPE_API_TIMEOUT={config.get('apiTimeout', 15)}",
+                f"STRIPE_VEND_RESULT_TIMEOUT={config.get('vendResultTimeout', 30)}",
+                f"STRIPE_PREAUTH_MAX_AMOUNT={config.get('preauthMaxAmount', 5000)}",
+                "STRIPE_STATE_FILE=/tmp/shaka_stripe_state.json",
+                "",
+            ]
+            env_content = "\n".join(lines)
+
+        with open(env_path, "w") as f:
+            f.write(env_content)
+
+        logging.getLogger("vend").info(f"[STRIPE-CONFIG] Written to {env_path}")
+        return {
+            "ok": True,
+            "message": f"Config written to {env_path}",
+            "note": "Restart shaka-payment and shaka-vend services to apply",
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -407,38 +472,50 @@ class VendHandler(BaseHTTPRequestHandler):
             self._json_response({"ok": False, "error": "Invalid JSON"}, 400)
             return
 
-        # --- Nayax payment routes ---
-        if self.path == "/nayax/pay":
+        # --- Stripe Terminal payment routes ---
+        if self.path == "/stripe/pay":
             items = data.get("items", [])
             machine_id = data.get("machineId", "default")
-            result = nayax_start_payment(items, machine_id)
+            result = stripe_start_payment(items, machine_id)
             self._json_response(result, 200 if result["ok"] else 500)
             return
 
-        if self.path == "/nayax/vend-result":
+        if self.path == "/stripe/add-item":
+            item = data.get("item", data)
+            result = stripe_add_item(item)
+            self._json_response(result, 200 if result["ok"] else 500)
+            return
+
+        if self.path == "/stripe/vend-result":
             success = data.get("success", False)
-            result = nayax_vend_result(success)
+            result = stripe_vend_result(success)
             self._json_response(result, 200 if result["ok"] else 500)
             return
 
-        if self.path == "/nayax/webhook":
-            # Forwarded Spark webhook from Fleet Manager
+        if self.path == "/stripe/webhook":
+            # Forwarded Stripe webhook from Fleet Manager
             event_type = data.get("eventType", "")
             payload = data.get("payload", data)
-            nayax = get_nayax()
-            result_data = nayax.handle_webhook(event_type, payload)
+            terminal = get_terminal()
+            result_data = terminal.handle_webhook(event_type, payload)
             result_data["ok"] = True
             self._json_response(result_data, 200)
             return
 
-        if self.path == "/nayax/cancel":
-            result = nayax_cancel()
+        if self.path == "/stripe/cancel":
+            result = stripe_cancel()
             self._json_response(result, 200)
             return
 
-        if self.path == "/nayax/reset":
-            result = nayax_reset()
+        if self.path == "/stripe/reset":
+            result = stripe_reset()
             self._json_response(result, 200)
+            return
+
+        if self.path == "/stripe/config":
+            # Receive Stripe config push from Fleet Manager
+            result = stripe_apply_config(data)
+            self._json_response(result, 200 if result["ok"] else 500)
             return
 
         # --- Original vend route ---
@@ -502,8 +579,8 @@ class VendHandler(BaseHTTPRequestHandler):
         elif self.path == "/proximity/reset":
             result = reset_proximity_counter()
             self._json_response(result, 200)
-        elif self.path == "/nayax/status":
-            result = nayax_get_status()
+        elif self.path == "/stripe/status":
+            result = stripe_get_status()
             self._json_response(result, 200)
         elif self.path == "/health":
             self._json_response({"ok": True, "status": "healthy"})

@@ -56,11 +56,11 @@ type MachineInfo = {
     services?: Record<string, string>;
     disk?: { percent?: number; used_gb?: number; total_gb?: number };
     memory?: { percent?: number; used_mb?: number; total_mb?: number };
-    nayax?: {
+    stripe?: {
       connected?: boolean;
       simulation?: boolean;
       state?: string;
-      link?: { poll_count?: number; link_ready?: boolean; comm_errors?: number; crc_errors?: number };
+      reader_id?: string;
     };
   };
 };
@@ -87,6 +87,9 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"products" | "stripe">("products");
+
   // Edit/Create state
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
@@ -98,6 +101,20 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
   const formImageRef = useRef<HTMLInputElement>(null);
   const [formImageFile, setFormImageFile] = useState<File | null>(null);
   const [formImagePreview, setFormImagePreview] = useState<string | null>(null);
+
+  // Stripe config state
+  const [stripeConfig, setStripeConfig] = useState({
+    secretKey: "",
+    readerId: "",
+    simulation: true,
+    decimalPlaces: 2,
+    apiTimeout: 15,
+    vendResultTimeout: 30,
+    preauthMaxAmount: 5000,
+  });
+  const [stripeSaving, setStripeSaving] = useState(false);
+  const [stripeMsg, setStripeMsg] = useState<string | null>(null);
+  const [stripeShowKey, setStripeShowKey] = useState(false);
 
   // Catalog picker state
   const [showCatalogPicker, setShowCatalogPicker] = useState(false);
@@ -133,7 +150,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     }
   };
 
-  useEffect(() => { void fetchData(); }, []);
+  useEffect(() => { void fetchData(); void fetchStripeConfig(); }, []);
 
   const openCreate = () => {
     const maxOrder = products.reduce((max, p) => Math.max(max, p.order || 0), -1) + 1;
@@ -350,6 +367,38 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
     }
   };
 
+  const fetchStripeConfig = async () => {
+    try {
+      const res = await fetch(`/api/machines/${machineId}/stripe-config?v=${Date.now()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setStripeConfig((prev) => ({ ...prev, ...data.config }));
+        }
+      }
+    } catch {}
+  };
+
+  const handlePushStripeConfig = async () => {
+    setStripeSaving(true);
+    setStripeMsg(null);
+    try {
+      const res = await fetch(`/api/machines/${machineId}/stripe-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(stripeConfig),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Erreur");
+      const transport = data.transport === "websocket" ? " (WebSocket instant)" : data.transport === "http-push" ? " (envoyé directement)" : " (en attente ~30s)";
+      setStripeMsg(`Configuration envoyée${transport}`);
+    } catch (e: any) {
+      setStripeMsg(`Erreur: ${e.message}`);
+    } finally {
+      setStripeSaving(false);
+    }
+  };
+
   const updateField = (field: string, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -388,15 +437,15 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
                 </span>
               )}
               {machine?.uptime && <span>Uptime: {machine.uptime}</span>}
-              {machine?.meta?.nayax && (
+              {machine?.meta?.stripe && (
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  machine.meta.nayax.simulation
+                  machine.meta.stripe.simulation
                     ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/20"
-                    : machine.meta.nayax.connected && machine.meta.nayax.link?.link_ready
+                    : machine.meta.stripe.connected
                       ? "bg-green-500/20 text-green-300 border border-green-500/20"
                       : "bg-red-500/20 text-red-300 border border-red-500/20"
                 }`}>
-                  Nayax: {machine.meta.nayax.simulation ? "SIM" : machine.meta.nayax.connected && machine.meta.nayax.link?.link_ready ? "LIVE" : "OFF"}
+                  Stripe: {machine.meta.stripe.simulation ? "SIM" : machine.meta.stripe.connected ? "LIVE" : "OFF"}
                 </span>
               )}
             </div>
@@ -434,6 +483,34 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
           </div>
         )}
       </div>
+
+      {/* Tabs */}
+      {isAdmin && (
+        <div className="mb-6 flex gap-1 rounded-xl border border-white/10 bg-slate-900/40 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("products")}
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "products"
+                ? "bg-brand-600 text-white shadow"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            Produits ({products.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("stripe")}
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "stripe"
+                ? "bg-purple-600 text-white shadow"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            Configuration Stripe
+          </button>
+        </div>
+      )}
 
       {/* Catalog picker modal */}
       {showCatalogPicker && (
@@ -499,12 +576,154 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
         </div>
       )}
 
-      {error && (
+      {/* ===== STRIPE CONFIG TAB ===== */}
+      {activeTab === "stripe" && isAdmin && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-lg font-medium text-white">Configuration Stripe Terminal</h2>
+              <p className="text-xs text-slate-400 mt-1">Configurer les paramètres de paiement Stripe pour cette machine. Les valeurs seront envoyées au fichier <code className="text-purple-400">/etc/default/shaka-stripe</code> sur le RPi.</p>
+            </div>
+            {machine?.meta?.stripe && (
+              <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                machine.meta.stripe.simulation
+                  ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/20"
+                  : machine.meta.stripe.connected
+                    ? "bg-green-500/20 text-green-300 border border-green-500/20"
+                    : "bg-red-500/20 text-red-300 border border-red-500/20"
+              }`}>
+                {machine.meta.stripe.simulation ? "SIMULATION" : machine.meta.stripe.connected ? "LIVE" : "HORS LIGNE"}
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            {/* Secret Key */}
+            <div className="md:col-span-2 grid gap-1">
+              <label className="text-xs text-slate-400">Clé secrète Stripe (STRIPE_SECRET_KEY)</label>
+              <div className="relative">
+                <input
+                  type={stripeShowKey ? "text" : "password"}
+                  value={stripeConfig.secretKey}
+                  onChange={(e) => setStripeConfig((c) => ({ ...c, secretKey: e.target.value }))}
+                  placeholder="sk_test_... ou sk_live_..."
+                  className="h-10 w-full rounded-lg bg-slate-950/50 px-3 pr-20 text-sm text-slate-100 font-mono outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500 placeholder:text-slate-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setStripeShowKey(!stripeShowKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-white/10 px-2 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-white/10"
+                >
+                  {stripeShowKey ? "Masquer" : "Afficher"}
+                </button>
+              </div>
+              <span className="text-[10px] text-slate-500">Trouvable dans Stripe Dashboard &gt; Developers &gt; API keys</span>
+            </div>
+
+            {/* Reader ID */}
+            <div className="grid gap-1">
+              <label className="text-xs text-slate-400">Reader ID (STRIPE_READER_ID)</label>
+              <input
+                value={stripeConfig.readerId}
+                onChange={(e) => setStripeConfig((c) => ({ ...c, readerId: e.target.value }))}
+                placeholder="tmr_xxx..."
+                className="h-10 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 font-mono outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500 placeholder:text-slate-600"
+              />
+              <span className="text-[10px] text-slate-500">Dashboard &gt; Terminal &gt; Readers</span>
+            </div>
+
+            {/* Simulation toggle */}
+            <div className="grid gap-1">
+              <label className="text-xs text-slate-400">Mode</label>
+              <div className="flex items-center gap-3 h-10">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={stripeConfig.simulation}
+                    onChange={(e) => setStripeConfig((c) => ({ ...c, simulation: e.target.checked }))}
+                    className="rounded border-white/20"
+                  />
+                  <span className="text-sm text-slate-300">Simulation</span>
+                </label>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  stripeConfig.simulation
+                    ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/20"
+                    : "bg-green-500/20 text-green-300 border border-green-500/20"
+                }`}>
+                  {stripeConfig.simulation ? "SIM" : "LIVE"}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500">En simulation, aucun appel API réel</span>
+            </div>
+
+            {/* Advanced settings */}
+            <div className="md:col-span-2 border-t border-white/5 pt-4 mt-1">
+              <div className="text-xs text-slate-500 uppercase tracking-wider mb-3">Paramètres avancés</div>
+              <div className="grid gap-4 md:grid-cols-4">
+                <div className="grid gap-1">
+                  <label className="text-[10px] text-slate-500">Décimales prix</label>
+                  <input type="number" value={stripeConfig.decimalPlaces}
+                    onChange={(e) => setStripeConfig((c) => ({ ...c, decimalPlaces: parseInt(e.target.value) || 2 }))}
+                    className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[10px] text-slate-500">Timeout API (sec)</label>
+                  <input type="number" value={stripeConfig.apiTimeout}
+                    onChange={(e) => setStripeConfig((c) => ({ ...c, apiTimeout: parseInt(e.target.value) || 15 }))}
+                    className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[10px] text-slate-500">Timeout vend (sec)</label>
+                  <input type="number" value={stripeConfig.vendResultTimeout}
+                    onChange={(e) => setStripeConfig((c) => ({ ...c, vendResultTimeout: parseInt(e.target.value) || 30 }))}
+                    className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[10px] text-slate-500">Pré-auth max (¢)</label>
+                  <input type="number" value={stripeConfig.preauthMaxAmount}
+                    onChange={(e) => setStripeConfig((c) => ({ ...c, preauthMaxAmount: parseInt(e.target.value) || 5000 }))}
+                    className="h-9 rounded-lg bg-slate-950/50 px-3 text-sm text-slate-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-purple-500" />
+                  <span className="text-[10px] text-slate-500">${(stripeConfig.preauthMaxAmount / 100).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Status message */}
+          {stripeMsg && (
+            <div className={`mt-4 rounded-lg px-3 py-2 text-xs ${
+              stripeMsg.startsWith("Erreur")
+                ? "bg-red-500/10 text-red-300 border border-red-500/20"
+                : "bg-green-500/10 text-green-300 border border-green-500/20"
+            }`}>
+              {stripeMsg}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="mt-5 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handlePushStripeConfig}
+              disabled={stripeSaving}
+              className="rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700 disabled:opacity-50"
+            >
+              {stripeSaving ? "Envoi en cours..." : "Envoyer la configuration"}
+            </button>
+            <span className="text-[10px] text-slate-500">
+              Sauvegarde et envoie la configuration au RPi de cette machine
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ===== PRODUCTS TAB ===== */}
+      {activeTab === "products" && error && (
         <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
       )}
 
       {/* Product form (create/edit) */}
-      {isFormOpen && (
+      {activeTab === "products" && isFormOpen && (
         <div className="mb-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6">
           <h2 className="text-lg font-medium text-white mb-4">
             {creating ? "Nouveau produit" : `Modifier: ${editing?.name}`}
@@ -661,7 +880,7 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
       )}
 
       {/* Products grid */}
-      {products.length === 0 ? (
+      {activeTab === "products" && products.length === 0 && (
         <div className="rounded-xl border border-white/10 bg-slate-900/40 p-8 text-center text-slate-400">
           Aucun produit configuré pour cette machine.
           {isAdmin && (
@@ -672,7 +891,8 @@ export function MachineDetailClient({ machineId, isAdmin }: { machineId: string;
             </div>
           )}
         </div>
-      ) : (
+      )}
+      {activeTab === "products" && products.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((product) => (
             <div

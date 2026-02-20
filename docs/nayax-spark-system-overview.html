@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shaka Distribution — Nayax Spark Integration Overview</title>
+<style>
+  @page { size: landscape; margin: 8mm 10mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #fff; color: #1a1a2e; padding: 20px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  .page { max-width: 1050px; margin: 0 auto; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0f3460; padding-bottom: 8px; margin-bottom: 10px; }
+  .header h1 { font-size: 18px; color: #0f3460; }
+  .header .subtitle { font-size: 11px; color: #555; margin-top: 2px; }
+
+  /* Section titles */
+  h2 { font-size: 12px; color: #0f3460; text-transform: uppercase; letter-spacing: 1.5px; margin: 12px 0 8px; border-left: 4px solid #e94560; padding-left: 8px; page-break-after: avoid; }
+
+  /* Architecture diagram */
+  .diagram { display: flex; align-items: flex-start; gap: 0; justify-content: center; margin: 8px 0; }
+  .component { border: 1.5px solid #0f3460; border-radius: 8px; padding: 8px 10px; min-width: 120px; text-align: center; }
+  .component.nayax { background: #fff3e6; border-color: #e67e22; }
+  .component.fleet { background: #e8f4fd; border-color: #0f3460; }
+  .component.rpi { background: #e8fde8; border-color: #27ae60; }
+  .component.vpos { background: #fde8e8; border-color: #e94560; }
+  .component .icon { font-size: 20px; margin-bottom: 2px; }
+  .component .name { font-weight: 700; font-size: 10px; margin-bottom: 1px; }
+  .component .desc { font-size: 8.5px; color: #555; line-height: 1.3; }
+  .component .tech { font-size: 8px; color: #888; margin-top: 2px; font-style: italic; }
+
+  .arrow-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 55px; padding-top: 8px; }
+  .arrow-line { font-size: 16px; color: #0f3460; line-height: 1; }
+  .arrow-label { font-size: 7.5px; color: #555; text-align: center; max-width: 70px; line-height: 1.2; margin-top: 1px; }
+  .arrow-label-top { font-size: 7.5px; color: #555; text-align: center; max-width: 70px; line-height: 1.2; margin-bottom: 1px; }
+
+  /* Flow box */
+  .flow-box { border: 1.5px solid #ddd; border-radius: 8px; padding: 10px 14px; background: #fafbff; margin: 8px 0; }
+  .flow-box h3 { font-size: 11px; color: #0f3460; margin-bottom: 6px; }
+  .steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; }
+  .step { display: flex; gap: 6px; margin-bottom: 4px; font-size: 9.5px; line-height: 1.4; }
+  .step-num { background: #0f3460; color: #fff; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .step-num.green { background: #27ae60; }
+  .step-num.orange { background: #e67e22; }
+  .step-num.red { background: #e94560; }
+
+  /* Security section */
+  .security-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 8px 0; }
+  .sec-card { border: 1.5px solid #ddd; border-radius: 8px; padding: 8px 10px; background: #fafbff; }
+  .sec-card h4 { font-size: 10px; color: #0f3460; margin-bottom: 4px; }
+  .sec-card p { font-size: 9px; color: #444; line-height: 1.45; }
+  .sec-card code { background: #eef; padding: 0 3px; border-radius: 2px; font-size: 8.5px; }
+
+  /* Hardware section */
+  .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+  .hw-card { border: 1.5px solid #ddd; border-radius: 8px; padding: 8px 10px; background: #fafbff; }
+  .hw-card h4 { font-size: 10px; color: #27ae60; margin-bottom: 4px; }
+  .hw-card ul { font-size: 9px; color: #444; line-height: 1.55; padding-left: 14px; }
+
+  /* Services table */
+  .svc-table { width: 100%; border-collapse: collapse; font-size: 9px; margin: 6px 0; }
+  .svc-table thead tr { background: #0f3460; color: #fff; }
+  .svc-table th { padding: 4px 8px; text-align: left; font-weight: 600; }
+  .svc-table td { padding: 3px 8px; }
+  .svc-table tr:nth-child(even) { background: #f4f6ff; }
+
+  /* Footer */
+  .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; font-size: 8px; color: #999; }
+
+  /* Page break helper */
+  .page-break { page-break-before: always; padding-top: 4px; }
+
+  @media print {
+    body { padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .page { max-width: 100%; }
+    .component, .sec-card, .hw-card, .flow-box, .svc-table tr:nth-child(even) { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <h1>Nayax Spark Integration — System Overview</h1>
+      <div class="subtitle">Vending Machine Payment & Product Delivery Architecture</div>
+    </div>
+    <div style="font-size: 22px; font-weight: 800; color: #0f3460; letter-spacing: 2px;">SHAKA DISTRIBUTION</div>
+  </div>
+
+  <!-- ARCHITECTURE DIAGRAM -->
+  <h2>System Architecture</h2>
+  <div class="diagram">
+    <div class="component vpos">
+      <div class="icon">💳</div>
+      <div class="name">Nayax VPOS Touch</div>
+      <div class="desc">Payment terminal<br>on vending machine</div>
+      <div class="tech">NFC / Chip / Tap</div>
+    </div>
+    <div class="arrow-container">
+      <div class="arrow-label-top">Card auth</div>
+      <div class="arrow-line">⟵⟶</div>
+      <div class="arrow-label">Nayax network</div>
+    </div>
+    <div class="component nayax">
+      <div class="icon">☁️</div>
+      <div class="name">Nayax Cloud</div>
+      <div class="desc">Payment processing<br>& authorization</div>
+      <div class="tech">Spark API (HTTPS)</div>
+    </div>
+    <div class="arrow-container">
+      <div class="arrow-label-top">Webhooks</div>
+      <div class="arrow-line">⟵⟶</div>
+      <div class="arrow-label">REST / JSON<br>SHA-256 signed</div>
+    </div>
+    <div class="component fleet">
+      <div class="icon">🖥️</div>
+      <div class="name">Fleet Manager</div>
+      <div class="desc">Central server<br>fleet.shakadistribution.ca</div>
+      <div class="tech">Next.js / Docker</div>
+    </div>
+    <div class="arrow-container">
+      <div class="arrow-label-top">Forward</div>
+      <div class="arrow-line">⟵⟶</div>
+      <div class="arrow-label">HTTP / JSON<br>Private network</div>
+    </div>
+    <div class="component rpi">
+      <div class="icon"><svg width="22" height="26" viewBox="0 0 24 28" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="18" rx="8" ry="9" fill="#bc1142"/><ellipse cx="8" cy="15" rx="3" ry="3.5" fill="#d4264f" opacity=".7"/><ellipse cx="15" cy="15" rx="3" ry="3.5" fill="#d4264f" opacity=".7"/><ellipse cx="12" cy="20" rx="3" ry="3.5" fill="#d4264f" opacity=".6"/><ellipse cx="9" cy="19" rx="2.5" ry="3" fill="#d4264f" opacity=".5"/><ellipse cx="15" cy="19" rx="2.5" ry="3" fill="#d4264f" opacity=".5"/><path d="M10 9 C10 5 12 3 12 3 C12 3 14 5 14 9" stroke="#2d7a3a" stroke-width="1.5" fill="none"/><path d="M8 10 C6 6 9 4 9 4" stroke="#2d7a3a" stroke-width="1.2" fill="none"/><path d="M16 10 C18 6 15 4 15 4" stroke="#2d7a3a" stroke-width="1.2" fill="none"/></svg></div>
+      <div class="name">Raspberry Pi</div>
+      <div class="desc">On-machine controller<br>GPIO / Sensors</div>
+      <div class="tech">Python / systemd</div>
+    </div>
+    <div class="arrow-container">
+      <div class="arrow-label-top">Dispense</div>
+      <div class="arrow-line">⟶</div>
+      <div class="arrow-label">GPIO relay<br>+ keypad</div>
+    </div>
+    <div class="component" style="background:#fff8e1; border-color:#f39c12; min-width:100px;">
+      <div class="icon"><svg width="22" height="26" viewBox="0 0 24 28" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="2" width="16" height="24" rx="2" fill="#5a6577" stroke="#3a4050" stroke-width="1"/><rect x="6" y="4" width="12" height="10" rx="1" fill="#a8d8ea"/><rect x="7" y="5" width="3" height="3" rx=".5" fill="#fff" opacity=".8"/><rect x="11" y="5" width="3" height="3" rx=".5" fill="#fff" opacity=".8"/><rect x="7" y="9" width="3" height="3" rx=".5" fill="#fff" opacity=".8"/><rect x="11" y="9" width="3" height="3" rx=".5" fill="#fff" opacity=".8"/><rect x="15" y="5" width="2" height="7" rx=".5" fill="#e94560"/><rect x="6" y="16" width="12" height="4" rx="1" fill="#3a4050"/><rect x="8" y="22" width="8" height="3" rx="1" fill="#3a4050"/></svg></div>
+      <div class="name">Vending Machine</div>
+      <div class="desc">Motor &amp; drop sensor</div>
+      <div class="tech">Hardware</div>
+    </div>
+  </div>
+
+  <!-- PAYMENT FLOW -->
+  <h2>Payment & Delivery Flow (Device Start)</h2>
+  <div class="flow-box">
+    <div class="steps-grid">
+      <div class="step"><div class="step-num">1</div><div>Consumer <strong>selects product</strong> on machine touchscreen / keypad</div></div>
+      <div class="step"><div class="step-num">2</div><div>Consumer <strong>taps card</strong> on VPOS Touch (NFC / chip / swipe)</div></div>
+      <div class="step"><div class="step-num orange">3</div><div>VPOS sends auth request to <strong>Nayax Cloud</strong> → card network authorization</div></div>
+      <div class="step"><div class="step-num orange">4</div><div>Nayax Cloud sends <strong>StartSession</strong> webhook to Fleet Manager</div></div>
+      <div class="step"><div class="step-num">5</div><div>Fleet Manager <strong>forwards event</strong> to RPi via internal network</div></div>
+      <div class="step"><div class="step-num orange">6</div><div>Nayax Cloud sends <strong>TransactionNotify</strong> (approved/denied) webhook</div></div>
+      <div class="step"><div class="step-num green">7</div><div>If approved → RPi triggers <strong>product dispensing</strong> (GPIO relay / keypad)</div></div>
+      <div class="step"><div class="step-num green">8</div><div>Drop sensor <strong>confirms delivery</strong> → RPi reports success</div></div>
+      <div class="step"><div class="step-num red">9</div><div>Fleet Manager calls <strong>Settlement</strong> API to finalize charge</div></div>
+      <div class="step"><div class="step-num" style="background:#e94560;">!</div><div><strong>Failure:</strong> If dispensing fails → <strong>CancelTransaction</strong> → no charge</div></div>
+    </div>
+  </div>
+
+  <!-- SECURITY -->
+  <h2>Security Architecture</h2>
+  <div class="security-grid">
+    <div class="sec-card">
+      <h4>🔐 API Authentication</h4>
+      <p>Every Spark API request includes:<br>
+      • <code>IntegratorId</code> header (identifies Shaka)<br>
+      • <code>TransactionSignature</code> header<br>
+      • Signature = <strong>SHA-256</strong> hash of <code>SparkTransactionId;SignKey</code><br>
+      • Sign Key: 16-char shared secret from Nayax</p>
+    </div>
+    <div class="sec-card">
+      <h4>🌐 Network Security</h4>
+      <p>• Fleet Manager via <strong>HTTPS only</strong> (TLS 1.2+)<br>
+      • Webhook endpoint: <code>/api/nayax/webhook</code><br>
+      • RPi ↔ Fleet Manager: private network<br>
+      • RPi not directly accessible from internet<br>
+      • Credentials in <strong>environment variables</strong> only</p>
+    </div>
+    <div class="sec-card">
+      <h4>🛡️ Transaction Integrity</h4>
+      <p>• Unique <code>SparkTransactionId</code> per request (UUID)<br>
+      • Webhook signature verification<br>
+      • Settlement only after <strong>confirmed dispensing</strong><br>
+      • Auto-cancel on failure → <strong>no charge</strong><br>
+      • Timeout callbacks for abandoned sessions</p>
+    </div>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div class="page-break"></div>
+
+  <!-- HARDWARE / DISPENSING -->
+  <h2>Product Delivery & Verification</h2>
+  <div class="hw-grid">
+    <div class="hw-card">
+      <h4>⚙️ Dispensing Mechanism</h4>
+      <ul>
+        <li><strong>Raspberry Pi 4</strong> — on-machine controller (Python)</li>
+        <li><strong>GPIO relay</strong> — activates vending machine motor</li>
+        <li><strong>Keypad emulation</strong> — sends slot code (A1–H8) to board</li>
+        <li><strong>Drop sensor</strong> — IR sensor confirms product delivery</li>
+        <li><strong>Door sensor</strong> — detects open door (security)</li>
+      </ul>
+    </div>
+    <div class="hw-card">
+      <h4>✅ Delivery Verification</h4>
+      <ul>
+        <li>Payment approved → RPi sends <strong>vend command</strong></li>
+        <li>Motor spins → product drops → <strong>sensor triggers</strong></li>
+        <li>RPi reads sensor within <strong>30s timeout</strong></li>
+        <li>Drop detected → <strong>Settlement</strong> (charge finalized)</li>
+        <li>No drop → <strong>CancelTransaction</strong> (no charge)</li>
+        <li>All events logged for <strong>audit trail</strong></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- SERVICES TABLE -->
+  <h2>RPi Services Overview</h2>
+  <table class="svc-table">
+    <thead>
+      <tr>
+        <th>Service</th>
+        <th>Purpose</th>
+        <th>Port / Interface</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>shaka-nayax</strong></td><td>Nayax Spark protocol handler</td><td>Internal (state file)</td><td>Active</td></tr>
+      <tr><td><strong>shaka-vend</strong></td><td>HTTP vend server + webhook receiver</td><td>Port 5001</td><td>Active</td></tr>
+      <tr><td><strong>shaka-heartbeat</strong></td><td>Status report to Fleet Manager</td><td>Outbound HTTPS</td><td>Active</td></tr>
+      <tr><td><strong>shaka-proximity</strong></td><td>TeraRanger presence sensor</td><td>USB /dev/ttyACM0</td><td>Active</td></tr>
+      <tr><td><strong>shaka-camera</strong></td><td>Camera snapshot service</td><td>CSI / USB</td><td>Active</td></tr>
+      <tr><td><strong>shaka-gpio-init</strong></td><td>GPIO pin initialization at boot</td><td>GPIO</td><td>Active</td></tr>
+      <tr><td><strong>shaka-ui</strong></td><td>Local touchscreen UI</td><td>Port 3000</td><td>Active</td></tr>
+      <tr><td><strong>shaka-kiosk</strong></td><td>Chromium kiosk mode</td><td>Display</td><td>Active</td></tr>
+    </tbody>
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>Shaka Distribution Inc. — Confidential</div>
+    <div>Prepared for Nayax Spark Integration Onboarding</div>
+    <div>February 2026</div>
+  </div>
+
+</div>
+</body>
+</html>

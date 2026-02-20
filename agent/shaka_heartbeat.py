@@ -3,7 +3,7 @@
 Shaka Heartbeat Service
 ========================
 Daemon that periodically sends heartbeat data to the ShakaFleet Manager.
-Collects status from local services (vend server, proximity, nayax, door)
+Collects status from local services (vend server, proximity, stripe, door)
 and sends a consolidated payload to the fleet manager API.
 
 Runs as systemd service: shaka-heartbeat.service
@@ -283,9 +283,9 @@ def collect_proximity() -> Optional[Dict[str, Any]]:
     return result if result else None
 
 
-def collect_nayax() -> Optional[Dict[str, Any]]:
-    """Collect Nayax status."""
-    status = _local_get("/nayax/status")
+def collect_stripe() -> Optional[Dict[str, Any]]:
+    """Collect Stripe Terminal status."""
+    status = _local_get("/stripe/status")
     if status and status.get("ok"):
         result = {
             "connected": status.get("connected", False),
@@ -301,7 +301,7 @@ def collect_nayax() -> Optional[Dict[str, Any]]:
 def check_services() -> Dict[str, str]:
     """Check status of all shaka systemd services."""
     services = {}
-    for svc in ["shaka-vend", "shaka-nayax", "shaka-proximity", "shaka-camera", "shaka-ui", "shaka-kiosk"]:
+    for svc in ["shaka-vend", "shaka-payment", "shaka-proximity", "shaka-camera", "shaka-ui", "shaka-kiosk"]:
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", f"{svc}.service"],
@@ -349,10 +349,10 @@ def build_payload() -> Dict[str, Any]:
     if proximity:
         payload["proximity"] = proximity
 
-    # Nayax status
-    nayax = collect_nayax()
-    if nayax:
-        payload["meta"]["nayax"] = nayax
+    # Stripe Terminal status
+    stripe = collect_stripe()
+    if stripe:
+        payload["meta"]["stripe"] = stripe
 
     # Inventory
     inv = collect_inventory()
