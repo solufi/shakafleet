@@ -3,7 +3,7 @@
 Shaka Nayax Service
 ====================
 Daemon that maintains the connection to the Nayax VPOS Touch
-and exposes state via JSON file + optional HTTP status endpoint.
+via the Spark server-to-server API (replaces Marshall RS232 protocol).
 
 Runs as systemd service: shaka-nayax.service
 """
@@ -19,7 +19,7 @@ import time
 # Add parent dir to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nayax_marshall import MarshallProtocol, NayaxState, get_nayax
+from nayax_spark import SparkProtocol, NayaxState, get_nayax
 
 logging.basicConfig(
     level=logging.INFO,

@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nayax_marshall import get_nayax, VendItem, VendSession, NayaxState, PaymentResult
+from nayax_spark import get_nayax, VendItem, VendSession, NayaxState, PaymentResult
 from proximity_logger import init_db as init_proximity_db, get_today_stats, get_daily_stats, get_weekly_stats, get_recent_events, get_summary_for_heartbeat
 
 
@@ -305,7 +305,7 @@ def check_door_status() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Nayax Marshall Payment Integration
+# Nayax Spark Payment Integration
 # ---------------------------------------------------------------------------
 
 def nayax_start_payment(items_data: list, machine_id: str = "default") -> Dict[str, Any]:
@@ -419,6 +419,16 @@ class VendHandler(BaseHTTPRequestHandler):
             success = data.get("success", False)
             result = nayax_vend_result(success)
             self._json_response(result, 200 if result["ok"] else 500)
+            return
+
+        if self.path == "/nayax/webhook":
+            # Forwarded Spark webhook from Fleet Manager
+            event_type = data.get("eventType", "")
+            payload = data.get("payload", data)
+            nayax = get_nayax()
+            result_data = nayax.handle_webhook(event_type, payload)
+            result_data["ok"] = True
+            self._json_response(result_data, 200)
             return
 
         if self.path == "/nayax/cancel":

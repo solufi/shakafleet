@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+# BACKUP of Marshall-based shaka_nayax_service.py before Spark migration
+# See shaka_nayax_service.py for the current Spark-based version
