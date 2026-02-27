@@ -472,6 +472,14 @@ class StripeTerminal:
             self._emit("on_payment_captured", session)
             self._emit("on_session_complete", session)
             logger.info(f"[STRIPE-SIM] Payment captured: {session.total_price}¢")
+        elif session.is_interac:
+            # Interac payments are captured automatically on tap — no manual capture needed
+            session.captured_amount = session.total_price
+            session.payment_result = PaymentResult.CAPTURED.value
+            self._set_state(TerminalState.SESSION_COMPLETE)
+            self._emit("on_payment_captured", session)
+            self._emit("on_session_complete", session)
+            logger.info(f"[STRIPE] Interac payment already captured: {session.total_price}¢")
         else:
             self._capture_payment(session)
 
@@ -486,6 +494,13 @@ class StripeTerminal:
         if self.simulation:
             session.payment_result = PaymentResult.CANCELLED.value
             session.error = "Dispensing failed"
+            self._set_state(TerminalState.SESSION_COMPLETE)
+            self._emit("on_session_complete", session)
+        elif session.is_interac:
+            # Interac is already captured — cannot cancel, would need a refund
+            logger.warning("[STRIPE] Interac payment already captured — refund needed for failure")
+            session.payment_result = PaymentResult.CAPTURED.value
+            session.error = "Dispensing failed (Interac auto-captured — refund required)"
             self._set_state(TerminalState.SESSION_COMPLETE)
             self._emit("on_session_complete", session)
         else:
@@ -663,14 +678,19 @@ class StripeTerminal:
         self._api_calls += 1
         try:
             # Step 1: Create PaymentIntent
+            # Interac (Canadian debit) does NOT support capture_method=manual.
+            # We set capture_method per payment method type:
+            #   - card_present: manual (allows pre-auth, multi-vend, incremental auth)
+            #   - interac_present: automatic (captured immediately on tap)
             pi_params = {
                 "amount": str(session.total_price),
                 "currency": "cad",
                 "payment_method_types[0]": "card_present",
                 "payment_method_types[1]": "interac_present",
-                "capture_method": "manual",
+                "capture_method": "automatic",
                 "metadata[machineId]": self.machine_id,
                 "metadata[sessionId]": session.session_id,
+                "payment_method_options[card_present][capture_method]": "manual",
                 "payment_method_options[card_present][request_incremental_authorization_support]": "true",
             }
             # Add item metadata
@@ -693,6 +713,9 @@ class StripeTerminal:
             logger.info(f"[STRIPE] Processing on reader {self.reader_id}: {action_status}")
             self._set_state(TerminalState.WAITING_PAYMENT)
 
+            # Step 3: Poll PaymentIntent until customer taps or timeout
+            self._poll_payment_intent(session)
+
         except Exception as e:
             self._api_errors += 1
             logger.error(f"[STRIPE] Create/process payment error: {e}")
@@ -705,6 +728,110 @@ class StripeTerminal:
             session.error = str(e)
             self._set_state(TerminalState.ERROR)
             self._emit("on_error", str(e))
+
+    def _poll_payment_intent(self, session: VendSession):
+        """
+        Poll the PaymentIntent status until the customer taps or timeout.
+        This replaces webhook-based notification for payment collection.
+        """
+        poll_interval = 2.0  # seconds
+        max_wait = VEND_RESULT_TIMEOUT  # from env, default 30s
+        elapsed = 0.0
+
+        logger.info(f"[STRIPE] Polling PI {session.payment_intent_id} "
+                     f"(interval={poll_interval}s, max={max_wait}s)")
+
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                self._api_calls += 1
+                pi = _stripe_get(f"payment_intents/{session.payment_intent_id}")
+                status = pi.get("status", "")
+                logger.info(f"[STRIPE] Poll: status={status} ({elapsed:.0f}s)")
+
+                if status == "requires_capture":
+                    # Card payment (credit/debit) authorized — needs manual capture
+                    self._extract_card_details(session, pi)
+                    session.payment_result = PaymentResult.AUTHORIZED.value
+                    self._set_state(TerminalState.PAYMENT_AUTHORIZED)
+                    self._emit("on_payment_authorized", session)
+                    logger.info(f"[STRIPE] Payment authorized: {session.card_brand} "
+                                f"****{session.card_last4}")
+                    return
+
+                elif status == "succeeded":
+                    # Interac or auto-captured — already done
+                    self._extract_card_details(session, pi)
+                    session.captured_amount = pi.get("amount_received", session.total_price)
+                    session.payment_result = PaymentResult.CAPTURED.value
+                    session.transaction_id = pi.get("latest_charge", "")
+                    self._set_state(TerminalState.SESSION_COMPLETE)
+                    self._emit("on_payment_captured", session)
+                    self._emit("on_session_complete", session)
+                    logger.info(f"[STRIPE] Payment auto-captured (Interac): "
+                                f"{session.captured_amount}¢")
+                    return
+
+                elif status == "canceled" or status == "cancelled":
+                    session.payment_result = PaymentResult.CANCELLED.value
+                    session.error = "Payment cancelled"
+                    self._set_state(TerminalState.SESSION_COMPLETE)
+                    self._emit("on_session_complete", session)
+                    logger.info("[STRIPE] Payment cancelled during polling")
+                    return
+
+                elif status in ("requires_payment_method",):
+                    # Payment failed (card declined, etc.)
+                    last_error = pi.get("last_payment_error", {})
+                    error_msg = last_error.get("message", "Payment failed")
+                    session.payment_result = PaymentResult.DENIED.value
+                    session.error = error_msg
+                    self._set_state(TerminalState.ERROR)
+                    self._emit("on_payment_denied", session)
+                    logger.warning(f"[STRIPE] Payment denied: {error_msg}")
+                    return
+
+                # Still in requires_action or processing — keep polling
+
+            except Exception as e:
+                self._api_errors += 1
+                logger.warning(f"[STRIPE] Poll error: {e}")
+                # Don't break on transient errors, keep polling
+
+        # Timeout — cancel the payment
+        logger.warning(f"[STRIPE] Poll timeout after {max_wait}s — cancelling")
+        session.error = f"Timeout: no card tap after {max_wait}s"
+        self._set_state(TerminalState.ERROR)
+        self._emit("on_error", session.error)
+        try:
+            _stripe_post(f"payment_intents/{session.payment_intent_id}/cancel", {})
+        except Exception:
+            pass
+
+    def _extract_card_details(self, session: VendSession, pi: Dict[str, Any]):
+        """Extract card brand, last4, and Interac flag from a PaymentIntent."""
+        try:
+            charges = pi.get("charges", {}).get("data", [])
+            if charges:
+                pm_details = charges[0].get("payment_method_details", {})
+                interac = pm_details.get("interac_present", {})
+                card = pm_details.get("card_present", {})
+
+                if interac and interac.get("last4"):
+                    session.is_interac = True
+                    session.card_last4 = interac.get("last4", "")
+                    session.card_brand = "interac"
+                    session.incremental_supported = False
+                elif card and card.get("last4"):
+                    session.card_last4 = card.get("last4", "")
+                    session.card_brand = card.get("brand", "")
+                    session.incremental_supported = card.get(
+                        "incremental_authorization_supported", False
+                    )
+        except Exception as e:
+            logger.warning(f"[STRIPE] Could not extract card details: {e}")
 
     def _increment_authorization(self, session: VendSession, new_amount: int):
         """Increment the authorization amount for multi-vend."""
